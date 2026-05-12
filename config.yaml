@@ -1,0 +1,47 @@
+# Lesion DINOv3 point-supervised heatmap detector config
+seed: 1337
+
+data:
+  train_csv: data/train.csv
+  val_csv: data/val.csv
+  # CSV columns: image_path, points_json, prior_path(optional)
+  # points_json example: [[1234,567],[2222,3333]] in full-image pixel coordinates
+  tile_size: 768
+  train_samples_per_epoch: 5000 #20000
+  positive_fraction: 0.40
+  high_prior_negative_fraction: 0.30
+  random_negative_fraction: 0.20
+  low_prior_fraction: 0.10
+  prior_threshold: 0.35
+  sigma_px: 8
+  channels: 3
+  num_workers: 6
+
+model:
+  # Replace with your installed/available DINOv3 model id if different.
+  hf_model_name: facebook/dinov3-vits16-pretrain-lvd1689m
+  freeze_backbone: true
+  use_prior: false
+  head_channels: 128
+
+train:
+  output_dir: runs/lesion_dinov3_vits
+  epochs: 3 #20
+  batch_size: 8
+  lr: 0.0003
+  weight_decay: 0.0001
+  amp: true
+  loss: focal_bce  # focal_bce or weighted_bce
+  pos_weight: 20.0
+  focal_gamma: 2.0
+  save_every: 1
+
+infer:
+  checkpoint: runs/lesion_dinov3_vits/best.pt
+  tile_size: 768
+  stride: 768
+  batch_size: 8
+  threshold: 0.30
+  nms_radius_px: 24
+  max_candidates: 5000
+  prior_blend_alpha: 0.0  # 0 means detector only; e.g. 0.2 = 0.8 detector + 0.2 prior
