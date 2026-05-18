@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel
+import matplotlib.pyplot as plt
 
+import sys
 
 class DINOv3LesionDetector(nn.Module):
     def __init__(self, hf_model_name: str, freeze_backbone: bool = True, use_prior: bool = True, head_channels: int = 256):
@@ -35,6 +37,7 @@ class DINOv3LesionDetector(nn.Module):
         # [B, prefix+N, C] -> [B, C, Gh, Gw]. DINOv3 may include CLS/register
         # tokens before the patch tokens, so keep only the expected patch suffix.
         b, n, c = last_hidden_state.shape
+        print(f"last_hidden_state shape: {last_hidden_state.shape}")
         patch_size = getattr(self.backbone.config, "patch_size", 16)
         gh, gw = image_hw[0] // patch_size, image_hw[1] // patch_size
         num_patches = gh * gw
@@ -68,4 +71,24 @@ class DINOv3LesionDetector(nn.Module):
             feat = torch.cat([feat, self.prior_proj(psmall)], dim=1)
 
         logits_small = self.head(feat)
-        return F.interpolate(logits_small, size=image.shape[-2:], mode="bilinear", align_corners=False)
+        
+        output = F.interpolate(logits_small, size=image.shape[-2:], mode="bilinear", align_corners=False)
+        debug = True
+        if debug:
+            print(output[0, 0].shape)
+            print(torch.min(output[0, 0]), torch.max(output[0, 0]))
+            print(logits_small[0, 0].shape)
+            print(torch.min(logits_small[0, 0]), torch.max(logits_small[0, 0]))
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            axes[0].imshow(image[0].permute(1, 2, 0).cpu().numpy())
+            axes[0].set_title("Input Image")
+            axes[1].imshow(logits_small[0, 0].detach().cpu().numpy(), cmap="hot")
+            axes[1].set_title("Logits (Small)")
+            axes[2].imshow(output[0, 0].detach().cpu().numpy(), cmap="hot")
+            axes[2].set_title("Output (Upsampled)")
+            plt.tight_layout()
+            plt.savefig("debug_output.png")
+            plt.close()
+            sys.exit(0)
+        
+        return output

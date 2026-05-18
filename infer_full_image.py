@@ -9,7 +9,9 @@ import yaml
 from tqdm import tqdm
 
 from lesion_dinov3.model import DINOv3LesionDetector
-from lesion_dinov3.utils import extract_peaks, hann2d, iter_tile_origins, read_prior, read_rgb
+from lesion_dinov3.utils import extract_peaks, extract_peaks_torch, hann2d, iter_tile_origins, read_prior, read_rgb
+
+import timeit
 
 
 def load_model(ckpt_path, device):
@@ -33,6 +35,7 @@ def load_model(ckpt_path, device):
 
 
 def run_inference(image_path, prior_path, model, cfg, out_dir):
+    t0 = timeit.default_timer()
     os.makedirs(out_dir, exist_ok=True)
     device = next(model.parameters()).device
     print("inference on:", torch.cuda.get_device_name(0))
@@ -46,9 +49,9 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     bs = int(cfg["infer"].get("batch_size", 4))
     alpha = float(cfg["infer"].get("prior_blend_alpha", 0.0))
 
-    score = np.zeros((h, w), dtype=np.float32)
-    weight = np.zeros((h, w), dtype=np.float32)
-    win = hann2d(tile)
+    score = torch.zeros((h, w), device=device, dtype=torch.float32)
+    weight = torch.zeros((h, w), device=device, dtype=torch.float32)
+    win = torch.from_numpy(hann2d(tile)).to(device)
 
     origins = list(iter_tile_origins(w, h, tile, stride))
     batch_imgs, batch_priors, batch_origins = [], [], []
@@ -62,8 +65,8 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
         x = torch.from_numpy(np.stack(batch_imgs)).float().permute(0, 3, 1, 2) / 255.0
         p = torch.from_numpy(np.stack(batch_priors)[:, None]).float()
         x, p = x.to(device), p.to(device)
-        with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-            prob = torch.sigmoid(model(x, p)).detach().cpu().numpy()[:, 0]
+        with torch.inference_mode(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+            prob = torch.sigmoid(model(x, p))[:, 0].float()
         for pr, (x0, y0) in zip(prob, batch_origins):
             if alpha > 0:
                 prior_tile = prior[y0:y0+tile, x0:x0+tile]
@@ -88,14 +91,18 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     batch_pbar.close()
 
     tqdm.write("stitching tiles")
-    full_prob = score / np.maximum(weight, 1e-6)
+    full_prob_gpu = score / torch.clamp(weight, min=1e-6)
+    full_prob = full_prob_gpu.cpu().numpy()
     tqdm.write("extracting peaks")
-    pts, scores = extract_peaks(
-        full_prob,
+    pts, scores = extract_peaks_torch(
+        full_prob_gpu,
         threshold=float(cfg["infer"]["threshold"]),
         radius=int(cfg["infer"]["nms_radius_px"]),
         max_candidates=int(cfg["infer"].get("max_candidates", 5000)),
     )
+
+    t1 = timeit.default_timer()
+    print(f"Inference complete in {t1-t0:.2f} seconds. Found {len(pts)} candidates.")
 
     stem = os.path.splitext(os.path.basename(image_path))[0]
     heat_path = os.path.join(out_dir, f"{stem}_lesion_heatmap.npy")
@@ -115,18 +122,25 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     return heat_path, png_path, csv_path
 
 
-def main():
+def main(chk = None, img = None, fac = None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", required=True)#
     ap.add_argument("--image", required=True)
     ap.add_argument("--prior", default="")
     ap.add_argument("--out_dir", default="outputs")
     args = ap.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, cfg = load_model(args.checkpoint, device)
-    heat_path, png_path, csv_path = run_inference(args.image, args.prior, model, cfg, args.out_dir)
-    print("saved", heat_path, png_path, csv_path)
+    chkpnt = args.checkpoint if chk == None else chk
+    image = args.image if img == None else img
+    print("using device:", device, torch.cuda.get_device_name(0))
+    model, cfg = load_model(chkpnt, device)
+    print("model loaded. Starting inference...")
+    out = f"output/{fac}" if fac != None else args.out_dir
+    heat_path, png_path, csv_path = run_inference(image, args.prior, model, cfg, out)
 
+    print("saved", heat_path, png_path, csv_path)
+    if chk or img:
+        return heat_path, png_path, csv_path
 
 if __name__ == "__main__":
     main()

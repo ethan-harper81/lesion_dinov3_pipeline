@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from .utils import make_heatmap, parse_points, points_in_tile, read_prior, read_rgb, valid_tile_origin
+from .utils import make_diameter_aware_heatmap, make_heatmap, parse_points, points_in_tile, read_prior, read_rgb, valid_tile_origin
 
 
 class LesionTileDataset(Dataset):
@@ -27,13 +27,18 @@ class LesionTileDataset(Dataset):
         self.tile = int(cfg["data"]["tile_size"])
         self.sigma = float(cfg["data"]["sigma_px"])
         self.samples_per_epoch = int(cfg["data"].get("train_samples_per_epoch", len(self.df)))
-
+        self.diameter_aware = bool(cfg["data"].get("diameter_aware_heatmap", {}).get("enabled", False))
+        #rec['points'] is list of (x,y) tuples
+        #rec['points_diameter'] is list of (x,y,diameter) tuples
         self.records = []
         for _, row in self.df.iterrows():
-            pts = parse_points(row.get("points_json", "[]"))
+            if self.diameter_aware:
+                pts, pts_diameter = parse_points(row.get("points_json", "[]"), diameter_aware=True)
+            pts = parse_points(row.get("points_json", "[]"), diameter_aware=self.diameter_aware)
             self.records.append({
                 "image_path": row["image_path"],
                 "points": pts,
+                "points_diameter": pts_diameter if self.diameter_aware else None,
                 "prior_path": row.get("prior_path", None),
             })
 
@@ -107,8 +112,13 @@ class LesionTileDataset(Dataset):
             tile_img = cv2.copyMakeBorder(tile_img, 0, self.tile - tile_img.shape[0], 0, self.tile - tile_img.shape[1], cv2.BORDER_REFLECT)
             tile_prior = cv2.copyMakeBorder(tile_prior, 0, self.tile - tile_prior.shape[0], 0, self.tile - tile_prior.shape[1], cv2.BORDER_REFLECT)
 
-        local_pts = points_in_tile(rec["points"], x0, y0, self.tile)
-        target = make_heatmap(self.tile, self.tile, local_pts, self.sigma)
+        if self.diameter_aware:
+            local_pts = points_in_tile(rec["points_diameter"], x0, y0, self.tile, diameter_aware=True)
+            target = make_diameter_aware_heatmap(self.tile, self.tile, local_pts, image_scale=1, sigma_factor=self.cfg["data"]["diameter_aware_heatmap"].get("sigma_factor", 25), min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 6))
+        else:
+            local_pts = points_in_tile(rec["points"], x0, y0, self.tile)
+        
+            target = make_heatmap(self.tile, self.tile, local_pts, self.sigma)
 
         x = torch.from_numpy(tile_img).float().permute(2, 0, 1) / 255.0
         p = torch.from_numpy(tile_prior[None]).float()

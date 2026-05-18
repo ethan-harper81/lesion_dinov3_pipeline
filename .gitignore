@@ -1,6 +1,8 @@
 .venv/
 *.pt
 outputs/
+output/
 runs/
-data/
+data*/
 __pycache__/
+*.png

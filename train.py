@@ -1,5 +1,7 @@
 import argparse
 import os
+import subprocess
+import sys
 
 import torch
 import yaml
@@ -11,27 +13,46 @@ from lesion_dinov3.losses import focal_bce_with_logits, weighted_bce_with_logits
 from lesion_dinov3.model import DINOv3LesionDetector
 from lesion_dinov3.utils import seed_everything
 
+import matplotlib
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+
 
 def load_cfg(path):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
 
-def main():
+def main(cfg = None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config") #, default="config.yaml"
     args = ap.parse_args()
-    cfg = load_cfg(args.config)
+    cfg = cfg if cfg != None else load_cfg(args.config)
     seed_everything(int(cfg.get("seed", 1337)))
     os.makedirs(cfg["train"]["output_dir"], exist_ok=True)
+
+    nw = cfg["data"].get("num_workers", 4)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     train_ds = LesionTileDataset(cfg["data"]["train_csv"], cfg, training=True)
     val_ds = LesionTileDataset(cfg["data"]["val_csv"], cfg, training=False)
-    train_loader = DataLoader(train_ds, batch_size=cfg["train"]["batch_size"], shuffle=False,
-                              num_workers=cfg["data"].get("num_workers", 4), pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=cfg["train"]["batch_size"], shuffle=False,
-                            num_workers=cfg["data"].get("num_workers", 4), pin_memory=True)
+    train_loader = DataLoader(
+        train_ds, 
+        batch_size=cfg["train"]["batch_size"], 
+        shuffle=True,
+        num_workers=cfg["data"].get("num_workers", 4), 
+        pin_memory=True, 
+        persistent_workers=nw > 0,
+        prefetch_factor=2 if nw > 0 else None )
+    val_loader = DataLoader(
+        val_ds, 
+        batch_size=cfg["train"]["batch_size"], 
+        shuffle=False,
+        num_workers=cfg["data"].get("num_workers", 4), 
+        pin_memory=True,
+        persistent_workers=nw > 0,
+        prefetch_factor=2 if nw > 0 else None )
 
     model = DINOv3LesionDetector(
         cfg["model"]["hf_model_name"],
@@ -50,6 +71,10 @@ def main():
         return focal_bce_with_logits(logits, target, cfg["train"].get("focal_gamma", 2.0), cfg["train"].get("pos_weight", 20.0))
 
     best_val = float("inf")
+
+    training_loss_history = []
+    validation_loss_history = []
+
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
         model.train()
         running = 0.0
@@ -67,6 +92,9 @@ def main():
             scaler.update()
             running += float(loss.detach())
             pbar.set_postfix(loss=running / max(1, pbar.n))
+        running /= max(1, len(train_loader))
+        training_loss_history.append(running)
+
 
         model.eval()
         val_loss = 0.0
@@ -79,6 +107,8 @@ def main():
                 val_loss += float(compute_loss(logits, target))
         val_loss /= max(1, len(val_loader))
         print(f"epoch={epoch} val_loss={val_loss:.6f}")
+        validation_loss_history.append(val_loss)
+
 
         ckpt = {"model": model.state_dict(), "cfg": cfg, "epoch": epoch, "val_loss": val_loss}
         if epoch % int(cfg["train"].get("save_every", 1)) == 0:
@@ -87,6 +117,17 @@ def main():
             best_val = val_loss
             torch.save(ckpt, os.path.join(cfg["train"]["output_dir"], "best.pt"))
 
+    plt.plot(training_loss_history, label='Training Loss')
+    plt.plot(validation_loss_history, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
+    plt.close()
+
+    subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", cfg["train"]["output_dir"] + "/best.pt", "--image", ])
+
 
 if __name__ == "__main__":
     main()
+    subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", ""])

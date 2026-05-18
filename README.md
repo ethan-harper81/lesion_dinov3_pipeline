@@ -62,6 +62,12 @@ Run:
 python evaluate_points.py --manifest val_predictions.csv --tol 24 --score_threshold 0.3
 ```
 
+To save missed ground-truth points for review:
+
+```bash
+python evaluate_points.py --manifest val_predictions.csv --tol 24 --score_threshold 0.3 --fn_out_csv false_negatives.csv
+```
+
 ## Recommended starting config for 9504 x 6336 images
 
 - tile size: 768

@@ -13,19 +13,23 @@ data:
   random_negative_fraction: 0.20
   low_prior_fraction: 0.10
   prior_threshold: 0.35
-  sigma_px: 8
+  diameter_aware_heatmap:
+    enabled: true
+    sigma_factor: 25.0
+    min_sigma: 1.0
+    max_sigma: 6.0
+  sigma_px: 2
   channels: 3
   num_workers: 6
 
 model:
-  # Replace with your installed/available DINOv3 model id if different.
   hf_model_name: facebook/dinov3-vits16-pretrain-lvd1689m
   freeze_backbone: true
   use_prior: false
-  head_channels: 128
+  head_channels: 256
 
 train:
-  output_dir: runs/lesion_dinov3_vits
+  output_dir: runs/lesion_dinov3_vits_original
   epochs: 3 #20
   batch_size: 8
   lr: 0.0003
@@ -37,11 +41,11 @@ train:
   save_every: 1
 
 infer:
-  checkpoint: runs/lesion_dinov3_vits/best.pt
+  checkpoint: runs/lesion_dinov3_vits_original/best.pt
   tile_size: 768
-  stride: 768
+  stride: 512
   batch_size: 8
   threshold: 0.30
-  nms_radius_px: 24
+  nms_radius_px: 3
   max_candidates: 5000
   prior_blend_alpha: 0.0  # 0 means detector only; e.g. 0.2 = 0.8 detector + 0.2 prior
