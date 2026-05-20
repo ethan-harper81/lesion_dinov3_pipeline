@@ -7,7 +7,7 @@ data:
   # CSV columns: image_path, points_json, prior_path(optional)
   # points_json example: [[1234,567],[2222,3333]] in full-image pixel coordinates
   tile_size: 768
-  train_samples_per_epoch: 5000 #20000
+  train_samples_per_epoch: 10000 #20000
   positive_fraction: 0.40
   high_prior_negative_fraction: 0.30
   random_negative_fraction: 0.20
@@ -15,10 +15,9 @@ data:
   prior_threshold: 0.35
   diameter_aware_heatmap:
     enabled: true
-    sigma_factor: 25.0
     min_sigma: 1.0
-    max_sigma: 6.0
-  sigma_px: 2
+    max_sigma: 50.0
+  sigma_px: 24 #This should be aware of scale 24 for full scale ... 4 for 1/8scale, etc.
   channels: 3
   num_workers: 6
 
@@ -31,7 +30,7 @@ model:
 train:
   output_dir: runs/lesion_dinov3_vits_original
   epochs: 3 #20
-  batch_size: 8
+  batch_size: 16
   lr: 0.0003
   weight_decay: 0.0001
   amp: true
@@ -46,6 +45,6 @@ infer:
   stride: 512
   batch_size: 8
   threshold: 0.30
-  nms_radius_px: 3
+  nms_radius_px: 30 #Question
   max_candidates: 5000
   prior_blend_alpha: 0.0  # 0 means detector only; e.g. 0.2 = 0.8 detector + 0.2 prior

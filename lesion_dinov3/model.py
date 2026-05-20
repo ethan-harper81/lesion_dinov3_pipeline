@@ -37,7 +37,7 @@ class DINOv3LesionDetector(nn.Module):
         # [B, prefix+N, C] -> [B, C, Gh, Gw]. DINOv3 may include CLS/register
         # tokens before the patch tokens, so keep only the expected patch suffix.
         b, n, c = last_hidden_state.shape
-        print(f"last_hidden_state shape: {last_hidden_state.shape}")
+        #print(f"last_hidden_state shape: {last_hidden_state.shape}")
         patch_size = getattr(self.backbone.config, "patch_size", 16)
         gh, gw = image_hw[0] // patch_size, image_hw[1] // patch_size
         num_patches = gh * gw
@@ -73,7 +73,7 @@ class DINOv3LesionDetector(nn.Module):
         logits_small = self.head(feat)
         
         output = F.interpolate(logits_small, size=image.shape[-2:], mode="bilinear", align_corners=False)
-        debug = True
+        debug = False
         if debug:
             print(output[0, 0].shape)
             print(torch.min(output[0, 0]), torch.max(output[0, 0]))

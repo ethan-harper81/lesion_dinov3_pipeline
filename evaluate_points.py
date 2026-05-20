@@ -10,9 +10,12 @@ import matplotlib.patches as patches
 
 
 def parse_gt(s):
+
     if s is None or str(s).strip() == "" or str(s).lower() == "nan":
         return np.zeros((0, 2), dtype=np.float32)
-    return np.asarray(json.loads(s), dtype=np.float32)
+    arr = np.asarray(json.loads(s), dtype=np.float32)
+    arr = arr[:, :2]  # ignore diameter if present
+    return arr
 
 
 def match_points(pred, gt, tol):
@@ -20,9 +23,14 @@ def match_points(pred, gt, tol):
         return 0, len(pred), 0, np.zeros((0, 2), dtype=np.float32)
     used = np.zeros(len(gt), dtype=bool)
     tp = 0
+    print(f"matching {len(pred)} predicted points to {len(gt)} ground truth points with tol={tol}")
+    i = 0
     for p in pred:
-        d = np.sqrt(((gt - p) ** 2).sum(axis=1))
+        d= np.sqrt(((gt - p) ** 2).sum(axis=1))
         j = int(np.argmin(d)) if len(d) else -1
+        
+        print(f"pred point {p}  closest gt point {gt[j] if j >= 0 else None} at distance {d[j] if j >= 0 else None}")
+        i += 1
         if j >= 0 and d[j] <= tol and not used[j]:
             used[j] = True
             tp += 1

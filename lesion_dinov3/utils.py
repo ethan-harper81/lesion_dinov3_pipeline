@@ -21,13 +21,13 @@ def seed_everything(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def parse_points(points_json: str, diameter_aware: bool = False) -> List[Point]:
+def parse_points(points_json: str) -> List[Point]:
     if points_json is None or str(points_json).strip() == "" or str(points_json).lower() == "nan":
         return []
     pts = json.loads(points_json)
-    if diameter_aware:
-        return [(float(x), float(y)) for x, y, _ in pts], [(float(x), float(y), float(d)) for x, y, d in pts]
-    return [(float(x), float(y)) for x, y in pts]
+
+    return [(float(x), float(y), float(d)) for x, y, d in pts]
+
 
 
 def read_rgb(path: str) -> np.ndarray:
@@ -68,13 +68,13 @@ def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_s
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     hm = np.zeros((h, w), dtype=np.float32)
 
-    pbar = tqdm.tqdm(points, desc="Generating heatmap", unit="point")
-    for x, y, d in pbar:
+    # pbar = tqdm.tqdm(points, desc="Generating heatmap", unit="point")
+    for x, y, d in points:
         if x < 0 or y < 0 or x >= w or y >= h:
             continue
         d_scaled = d / image_scale
         sigma = np.clip(d / sigma_factor, min_sigma, max_sigma)
-        print(f"point ({x:.1f}, {y:.1f}), diameter={d:.1f}, sigma={sigma:.2f}")
+        # print(f"point ({x:.1f}, {y:.1f}), diameter={d:.1f}, sigma={sigma:.2f}")
         g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)).astype(np.float32)
         hm = np.maximum(hm, g)
     return hm
@@ -83,6 +83,8 @@ def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_s
 def points_in_tile(points: Sequence[Point], x0: int, y0: int, tile_size: int) -> List[Point]:
     out = []
     x1, y1 = x0 + tile_size, y0 + tile_size
+    if len(points) == 0:
+        return out
     if len(points[0]) == 3:
         for x, y, d in points:
             if x0 <= x < x1 and y0 <= y < y1:

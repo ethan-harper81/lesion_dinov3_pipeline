@@ -28,19 +28,19 @@ class LesionTileDataset(Dataset):
         self.sigma = float(cfg["data"]["sigma_px"])
         self.samples_per_epoch = int(cfg["data"].get("train_samples_per_epoch", len(self.df)))
         self.diameter_aware = bool(cfg["data"].get("diameter_aware_heatmap", {}).get("enabled", False))
-        #rec['points'] is list of (x,y) tuples
-        #rec['points_diameter'] is list of (x,y,diameter) tuples
+        
         self.records = []
         for _, row in self.df.iterrows():
-            if self.diameter_aware:
-                pts, pts_diameter = parse_points(row.get("points_json", "[]"), diameter_aware=True)
-            pts = parse_points(row.get("points_json", "[]"), diameter_aware=self.diameter_aware)
+            
+            pts = parse_points(row.get("points_json", "[]"))
             self.records.append({
                 "image_path": row["image_path"],
                 "points": pts,
-                "points_diameter": pts_diameter if self.diameter_aware else None,
+                # "points_diameter": pts_diameter if self.diameter_aware else None,
                 "prior_path": row.get("prior_path", None),
             })
+        
+        self.avg_diameter = np.mean([p[2] for r in self.records for p in r["points"]]) if self.diameter_aware else None
 
         self.pos_indices = [i for i, r in enumerate(self.records) if len(r["points"]) > 0]
         self.all_indices = list(range(len(self.records)))
@@ -57,7 +57,7 @@ class LesionTileDataset(Dataset):
         h, w = img.shape[:2]
         tile = self.tile
         if mode == "positive" and len(points) > 0:
-            x, y = random.choice(points)
+            x, y, _ = random.choice(points)
             jitter = tile // 3
             x0 = int(x - tile / 2 + random.randint(-jitter, jitter))
             y0 = int(y - tile / 2 + random.randint(-jitter, jitter))
@@ -99,7 +99,7 @@ class LesionTileDataset(Dataset):
         else:
             # Validation samples one tile centered around a lesion if possible, otherwise center image.
             if rec["points"]:
-                x, y = rec["points"][0]
+                x, y, _ = rec["points"][0]
                 x0, y0 = valid_tile_origin(int(x - self.tile / 2), int(y - self.tile / 2), w, h, self.tile)
             else:
                 x0, y0 = valid_tile_origin((w - self.tile) // 2, (h - self.tile) // 2, w, h, self.tile)
@@ -111,13 +111,16 @@ class LesionTileDataset(Dataset):
         if tile_img.shape[0] != self.tile or tile_img.shape[1] != self.tile:
             tile_img = cv2.copyMakeBorder(tile_img, 0, self.tile - tile_img.shape[0], 0, self.tile - tile_img.shape[1], cv2.BORDER_REFLECT)
             tile_prior = cv2.copyMakeBorder(tile_prior, 0, self.tile - tile_prior.shape[0], 0, self.tile - tile_prior.shape[1], cv2.BORDER_REFLECT)
-
+        local_pts = points_in_tile(rec["points"], x0, y0, self.tile)
         if self.diameter_aware:
-            local_pts = points_in_tile(rec["points_diameter"], x0, y0, self.tile, diameter_aware=True)
-            target = make_diameter_aware_heatmap(self.tile, self.tile, local_pts, image_scale=1, sigma_factor=self.cfg["data"]["diameter_aware_heatmap"].get("sigma_factor", 25), min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 6))
+            target = make_diameter_aware_heatmap(
+                self.tile, self.tile, local_pts, 
+                image_scale=1, 
+                sigma_factor=self.avg_diameter / self.sigma, 
+                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), 
+                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 50.0)
+            )
         else:
-            local_pts = points_in_tile(rec["points"], x0, y0, self.tile)
-        
             target = make_heatmap(self.tile, self.tile, local_pts, self.sigma)
 
         x = torch.from_numpy(tile_img).float().permute(2, 0, 1) / 255.0
