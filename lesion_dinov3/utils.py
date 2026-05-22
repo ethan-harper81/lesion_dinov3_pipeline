@@ -189,6 +189,9 @@ def extract_peaks_torch(
     pts_np = pts.cpu().numpy().astype(np.float32)
     scores_np = scores.cpu().numpy().astype(np.float32)
 
+    np.save("debug_pts.npy", pts_np)
+    np.save("debug_scores.npy", scores_np)
+
     pts_np, scores_np = nms_points(
         pts_np,
         scores_np,

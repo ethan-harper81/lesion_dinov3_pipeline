@@ -68,6 +68,7 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
         with torch.inference_mode(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
             prob = torch.sigmoid(model(x, p))[:, 0].float()
         for pr, (x0, y0) in zip(prob, batch_origins):
+            #If Prior exists
             if alpha > 0:
                 prior_tile = prior[y0:y0+tile, x0:x0+tile]
                 pr = (1 - alpha) * pr + alpha * prior_tile
