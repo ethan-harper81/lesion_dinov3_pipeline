@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import sys
 
 class DINOv3LesionDetector(nn.Module):
-    def __init__(self, hf_model_name: str, freeze_backbone: bool = True, use_prior: bool = True, head_channels: int = 256, loss_logits_small: bool = True):
+    def __init__(self, hf_model_name: str, freeze_backbone: bool = True, use_prior: bool = True, head_channels: int = 256, loss_logits_small: bool = False):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(hf_model_name)
         self.use_prior = use_prior

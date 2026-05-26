@@ -68,8 +68,9 @@ def main(cfg = None):
         loss_logits_small=loss_logits_small
     ).to(device)
 
+
     params = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.AdamW(params, lr=cfg["train"]["lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4))
+    opt = torch.optim.AdamW(params, lr=cfg["train"]["head_lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4))
     scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
 
     def compute_loss(logits, target, mode = "train"):
@@ -95,6 +96,36 @@ def main(cfg = None):
     fig, ax = plt.subplots(1, 2, figsize=(10, 5 ))
 
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
+
+        if epoch == int(cfg["train"].get("unfreeze_epoch", 5)):
+
+            print(f"Unfreezing backbone at epoch {epoch}")
+
+            for p in model.backbone.parameters():
+                p.requires_grad = False
+            for layer in model.backbone.model.layer[-2:]:
+                for p in layer.parameters():
+                    p.requires_grad = True
+            
+            opt = torch.optim.AdamW(
+                [
+                    {
+                        "params": model.head.parameters(),
+                        "lr": cfg["train"]["head_lr"],
+                    },
+                    {
+                        "params": [
+                            p for p in model.backbone.parameters()
+                            if p.requires_grad
+                        ],
+                        "lr": cfg["train"]["backbone_lr"],
+                    },
+                ],
+                weight_decay=cfg["train"].get("weight_decay", 1e-4)
+            )
+
+            scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
+
         model.train()
         running = 0.0
         pbar = tqdm(train_loader, desc=f"epoch {epoch} train")
