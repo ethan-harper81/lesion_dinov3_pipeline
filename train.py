@@ -103,6 +103,34 @@ def main(cfg = None):
 
             for p in model.backbone.parameters():
                 p.requires_grad = False
+            for layer in model.backbone.model.layer[-1:]:
+                for p in layer.parameters():
+                    p.requires_grad = True
+            
+            opt = torch.optim.AdamW(
+                [
+                    {
+                        "params": model.head.parameters(),
+                        "lr": cfg["train"]["head_lr"],
+                    },
+                    {
+                        "params": [
+                            p for p in model.backbone.parameters()
+                            if p.requires_grad
+                        ],
+                        "lr": cfg["train"]["backbone_lr"],
+                    },
+                ],
+                weight_decay=cfg["train"].get("weight_decay", 1e-4)
+            )
+
+            scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
+        
+        if epoch == 10:
+            print(f"Unfreezing more backbone at epoch {epoch}")
+
+            for p in model.backbone.parameters():
+                p.requires_grad = False
             for layer in model.backbone.model.layer[-2:]:
                 for p in layer.parameters():
                     p.requires_grad = True
@@ -147,10 +175,14 @@ def main(cfg = None):
         running /= max(1, len(train_loader))
         training_loss_history.append(running)
 
-        ax[0].plot(training_loss_history, label=f'Training Loss (epoch {epoch})')
+        # Redraw the training loss subplot from scratch so the plot
+        # reflects the full history at the current epoch instead of
+        # adding a new overlapping line each time.
+        ax[0].clear()
+        ax[0].plot(list(range(1, len(training_loss_history) + 1)), training_loss_history)
         ax[0].set_xlabel('Epoch')
         ax[0].set_ylabel('Loss')
-        ax[0].legend()
+        ax[0].set_title('Training Loss')
 
         model.eval()
         val_loss = 0.0
@@ -165,11 +197,14 @@ def main(cfg = None):
         print(f"epoch={epoch} val_loss={val_loss:.6f}")
         validation_loss_history.append(val_loss)
 
-        ax[1].plot(validation_loss_history, label=f'Validation Loss (epoch {epoch})')
+        # Redraw the validation loss subplot from scratch as well.
+        ax[1].clear()
+        ax[1].plot(list(range(1, len(validation_loss_history) + 1)), validation_loss_history)
         ax[1].set_xlabel('Epoch')
         ax[1].set_ylabel('Loss')
-        ax[1].legend()
+        ax[1].set_title('Validation Loss')
 
+        fig.tight_layout()
         plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
 
 

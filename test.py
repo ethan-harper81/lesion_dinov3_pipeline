@@ -21,8 +21,8 @@ from PIL import Image
 
 import csv
 
-# cmap = cm.get_cmap("RdYlGn")
-# norm = mcolors.Normalize(vmin=.3, vmax=.87)
+fns = [[4653.12, 2012.0, 50.56],
+        [1625.28, 251.36, 32.0]]
 
 plt.imshow(Image.open(im))
 
@@ -34,20 +34,43 @@ with open(csv_path, 'r', newline='') as csvfile:
     reader = csv.reader(csvfile)
     points = [row for row in reader]
     total = 0
-    for i, point in enumerate(points):
+
+    for fn in fns:
+        min_dist = float('inf')
+        closest_point = None
+        for i, p in enumerate(points):
+            if i == 0:
+                continue
+            point = [float(p[0]), float(p[1]), float(p[2])]
+            d = np.sqrt((point[0] - fn[0]) ** 2 + (point[1] - fn[1]) ** 2)
+            if d < min_dist:
+                min_dist = d
+                closest_point = point
+            # if d < fn[2] / 2:
+            #     plt.scatter(float(p[0]), float(p[1]), c='g', s=5)
+            #     plt.scatter(fn[0], fn[1], c='r', s=5)
+            #     plt.plot([point[0], fn[0]], [point[1], fn[1]], 'b--', linewidth=0.5)
+            #     print(f"Point {point} is {d} pixels from fn {fn[:2]}.")
+        plt.scatter(closest_point[0], closest_point[1], c='g', s=5)
+        plt.scatter(fn[0], fn[1], c='r', s=5)
+        plt.plot([closest_point[0], fn[0]], [closest_point[1], fn[1]], 'b--', linewidth=0.5)
+        print
+
+
+    # for i, point in enumerate(points):
         
-        if i == num_candidates + 1:
-            break
+    #     # if i == num_candidates + 1:
+    #     #     break
         
-        if i == 0:
-            continue  
+    #     if i == 0:
+    #         continue  
         
-        point = [float(point[0]), float(point[1]), float(point[2])]
-        if point[2] > .5:
-            total += 1
-            rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
-            plt.gca().add_patch(rect)
-            #plt.scatter(point[0], point[1], c='g', s=2)
+    #     point = [float(point[0]), float(point[1]), float(point[2])]
+    #     if point[2] > .5:
+    #         total += 1
+    #         rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
+    #         plt.gca().add_patch(rect)
+    #         plt.scatter(point[0], point[1], c='g', s=2)
         # else:
         #     rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='y', facecolor='none')
         #     plt.gca().add_patch(rect)
@@ -56,7 +79,7 @@ with open(csv_path, 'r', newline='') as csvfile:
 plt.axis('off')
 # plt.show()
 
-for p in og_points:
+for p in fns:
     plt.scatter(p[0], p[1], c='r', s=5)
 
 # fps = [(4075.1201171875, 1402.47998046875), (95.5199966430664, 4945.259765625), (614.7000122070312, 516.4299926757812), (1964.47998046875, 4255.0400390625), (1781.52001953125, 5624.9599609375)]

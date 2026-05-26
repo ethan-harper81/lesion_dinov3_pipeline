@@ -14,31 +14,55 @@ def parse_gt(s):
     if s is None or str(s).strip() == "" or str(s).lower() == "nan":
         return np.zeros((0, 2), dtype=np.float32)
     arr = np.asarray(json.loads(s), dtype=np.float32)
-    arr = arr[:, :2]  # ignore diameter if present
+    #arr = arr[:, :2]  # ignore diameter if present
     return arr
 
 
-def match_points(pred, gt, tol):
+def match_points(pred, gts, tol):
+    inds = [25, 57]
+    gt = gts[:, :2]  # ignore diameter if present
+    tol = gts[:, -1]  
+    print(f"match_points: pred.shape={pred.shape}, gt.shape={gt.shape}, tol={tol}")
     if len(gt) == 0:
         return 0, len(pred), 0, np.zeros((0, 2), dtype=np.float32)
     used = np.zeros(len(gt), dtype=bool)
     tp = 0
-    print(f"matching {len(pred)} predicted points to {len(gt)} ground truth points with tol={tol}")
     i = 0
     for p in pred:
         d= np.sqrt(((gt - p) ** 2).sum(axis=1))
         j = int(np.argmin(d)) if len(d) else -1
         
-        print(f"pred point {p}  closest gt point {gt[j] if j >= 0 else None} at distance {d[j] if j >= 0 else None}")
+        if j in inds:
+            print(f"pred point {i}: {p}, closest gt index: {j}, distance: {d[j] if j >= 0 else 'N/A'}, tol: {tol[j] if j >= 0 else 'N/A'}")
+
         i += 1
-        if j >= 0 and d[j] <= tol and not used[j]:
+        if j >= 0 and d[j] <= tol[j] / 2 and not used[j]:
             used[j] = True
             tp += 1
     fp = len(pred) - tp
     fn = len(gt) - tp
     fn_points = gt[~used]
-    return tp, fp, fn, fn_points
+    fn_indices = np.where(~used)[0]
+    return tp, fp, fn, fn_points, fn_indices
 
+def test(manifest):
+    df = pd.read_csv(manifest)
+    total_tp = total_fp = total_fn = 0
+    for _, row in df.iterrows():
+        gt = parse_gt(row["points_json"])
+        print(gt)
+        p = pd.read_csv(row["pred_csv"])
+        pred = p[["x", "y"]].to_numpy(dtype=np.float32)
+        tp, fp, fn, fn_points, fn_indices = match_points(pred, gt, tol=24)
+        total_tp += tp; total_fp += fp; total_fn += fn
+
+    sens = total_tp / max(1, total_tp + total_fn)
+    prec = total_tp / max(1, total_tp + total_fp)
+    fpi = total_fp / max(1, len(df))
+    print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
+           "tp": total_tp, "fp": total_fp, "fn": total_fn})
+    print(fn_points)
+    print(fn_indices)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -79,4 +103,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test("data/eval.csv")
