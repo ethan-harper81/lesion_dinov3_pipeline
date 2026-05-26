@@ -24,27 +24,27 @@ import csv
 # cmap = cm.get_cmap("RdYlGn")
 # norm = mcolors.Normalize(vmin=.3, vmax=.87)
 
-plt.imshow(Image.open(im))
+# plt.imshow(Image.open(im))
 
-nms_radius_px = 60
+# nms_radius_px = 60
 
-with open(csv_path, 'r', newline='') as csvfile:
-    reader = csv.reader(csvfile)
-    points = [row for row in reader]
-    for i, point in enumerate(points):
+# with open(csv_path, 'r', newline='') as csvfile:
+#     reader = csv.reader(csvfile)
+#     points = [row for row in reader]
+#     for i, point in enumerate(points):
         
         
-        if i == 0:
-            continue  
+#         if i == 0:
+#             continue  
         
-        point = [float(point[0]), float(point[1]), float(point[2])]
-        if point[2] > .5:
-            rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
-            plt.gca().add_patch(rect)
-            plt.scatter(point[0], point[1], c='g', s=2)
+#         point = [float(point[0]), float(point[1]), float(point[2])]
+#         if point[2] > .5:
+#             rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
+#             plt.gca().add_patch(rect)
+#             plt.scatter(point[0], point[1], c='g', s=2)
 
-plt.axis('off')
-plt.show()
+# plt.axis('off')
+# plt.show()
 
 # for p in og_points:
 #     plt.scatter(p[0], p[1], c='r', s=5)
@@ -118,3 +118,17 @@ plt.show()
 # plt.axis('off')
 
 # plt.show()
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = [0.0167,0.0125,0.0123,0.0116,0.0119,0.0112,0.0114,0.011,0.0111,0.0112,0.0111,0.0113,0.0106,0.0107]
+epochs = np.arange(1, len(x)+1)
+
+fig, ax = plt.subplots()
+ax.semilogy(epochs, x, marker='o')        # or: ax.plot(epochs, x); ax.set_yscale('log')
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Loss (log scale)')
+ax.grid(True, which='both', ls='--', lw=0.5)
+plt.show()

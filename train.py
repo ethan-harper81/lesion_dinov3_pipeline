@@ -7,9 +7,10 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import torch.nn.functional as F
 
 from lesion_dinov3.dataset import LesionTileDataset
-from lesion_dinov3.losses import focal_bce_with_logits, weighted_bce_with_logits
+from lesion_dinov3.losses import focal_bce_with_logits, weighted_bce_with_logits, tversky_loss
 from lesion_dinov3.model import DINOv3LesionDetector
 from lesion_dinov3.utils import seed_everything
 
@@ -34,9 +35,14 @@ def main(cfg = None):
 
     nw = cfg["data"].get("num_workers", 4)
 
+    loss_logits_small = cfg["train"].get("loss_logits_small", True)
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     train_ds = LesionTileDataset(cfg["data"]["train_csv"], cfg, training=True)
+    print(len(train_ds), "training samples")
     val_ds = LesionTileDataset(cfg["data"]["val_csv"], cfg, training=False)
+    print(len(val_ds), "validation samples")
+
     train_loader = DataLoader(
         train_ds, 
         batch_size=cfg["train"]["batch_size"], 
@@ -59,21 +65,34 @@ def main(cfg = None):
         freeze_backbone=cfg["model"].get("freeze_backbone", True),
         use_prior=cfg["model"].get("use_prior", True),
         head_channels=cfg["model"].get("head_channels", 256),
+        loss_logits_small=loss_logits_small
     ).to(device)
 
     params = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(params, lr=cfg["train"]["lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4))
     scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
 
-    def compute_loss(logits, target):
+    def compute_loss(logits, target, mode = "train"):
+
+        if loss_logits_small:
+            target = F.interpolate(target, size=logits.shape[-2:], mode="nearest")
+        
         if cfg["train"].get("loss", "focal_bce") == "weighted_bce":
-            return weighted_bce_with_logits(logits, target, cfg["train"].get("pos_weight", 20.0))
-        return focal_bce_with_logits(logits, target, cfg["train"].get("focal_gamma", 2.0), cfg["train"].get("pos_weight", 20.0))
+            loss = weighted_bce_with_logits(logits, target, cfg["train"].get("pos_weight", 20.0))
+        else:
+            loss = focal_bce_with_logits(logits, target, cfg["train"].get("focal_gamma", 2.0), cfg["train"].get("pos_weight", 20.0))
+        if mode == "train":
+            return loss
+        else:
+            tversky = tversky_loss(logits, target)
+            return loss / tversky
 
     best_val = float("inf")
 
     training_loss_history = []
     validation_loss_history = []
+
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5 ))
 
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
         model.train()
@@ -83,10 +102,12 @@ def main(cfg = None):
             image = batch["image"].to(device, non_blocking=True)
             prior = batch["prior"].to(device, non_blocking=True)
             target = batch["target"].to(device, non_blocking=True)
+
             opt.zero_grad(set_to_none=True)
             with torch.amp.autocast("cuda", enabled=scaler.is_enabled()):
                 logits = model(image, prior)
                 loss = compute_loss(logits, target)
+
             scaler.scale(loss).backward()
             scaler.step(opt)
             scaler.update()
@@ -95,6 +116,10 @@ def main(cfg = None):
         running /= max(1, len(train_loader))
         training_loss_history.append(running)
 
+        ax[0].plot(training_loss_history, label=f'Training Loss (epoch {epoch})')
+        ax[0].set_xlabel('Epoch')
+        ax[0].set_ylabel('Loss')
+        ax[0].legend()
 
         model.eval()
         val_loss = 0.0
@@ -109,6 +134,13 @@ def main(cfg = None):
         print(f"epoch={epoch} val_loss={val_loss:.6f}")
         validation_loss_history.append(val_loss)
 
+        ax[1].plot(validation_loss_history, label=f'Validation Loss (epoch {epoch})')
+        ax[1].set_xlabel('Epoch')
+        ax[1].set_ylabel('Loss')
+        ax[1].legend()
+
+        plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
+
 
         ckpt = {"model": model.state_dict(), "cfg": cfg, "epoch": epoch, "val_loss": val_loss}
         if epoch % int(cfg["train"].get("save_every", 1)) == 0:
@@ -117,17 +149,22 @@ def main(cfg = None):
             best_val = val_loss
             torch.save(ckpt, os.path.join(cfg["train"]["output_dir"], "best.pt"))
 
-    plt.plot(training_loss_history, label='Training Loss')
-    plt.plot(validation_loss_history, label='Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
-    plt.close()
+    # fig, ax = plt.subplots(1,2, figsize=(10, 5))
 
-    subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", cfg["train"]["output_dir"] + "/best.pt", "--image", ])
+    # ax[0].plot(training_loss_history, label='Training Loss')
+    # ax[1].plot(validation_loss_history, label='Validation Loss')
+    # ax[0].set_xlabel('Epoch')
+    # ax[0].set_ylabel('Loss')
+    # ax[0].legend()
+    # ax[1].set_xlabel('Epoch')
+    # ax[1].set_ylabel('Loss')
+    # ax[1].legend()
+    # plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
+    # plt.close()
+
+    #subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", cfg["train"]["output_dir"] + "/best.pt", "--image", ])
 
 
 if __name__ == "__main__":
     main()
-    subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", ""])
+    #subprocess.run([sys.executable, "python", "infer_full_image.py", "--checkpoint", ""])

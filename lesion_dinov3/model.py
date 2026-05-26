@@ -9,10 +9,11 @@ import matplotlib.pyplot as plt
 import sys
 
 class DINOv3LesionDetector(nn.Module):
-    def __init__(self, hf_model_name: str, freeze_backbone: bool = True, use_prior: bool = True, head_channels: int = 256):
+    def __init__(self, hf_model_name: str, freeze_backbone: bool = True, use_prior: bool = True, head_channels: int = 256, loss_logits_small: bool = True):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(hf_model_name)
         self.use_prior = use_prior
+        self.loss_logits_small = loss_logits_small
 
         if freeze_backbone:
             for p in self.backbone.parameters():
@@ -71,6 +72,9 @@ class DINOv3LesionDetector(nn.Module):
             feat = torch.cat([feat, self.prior_proj(psmall)], dim=1)
 
         logits_small = self.head(feat)
+
+        if self.loss_logits_small:
+            return logits_small
         
         output = F.interpolate(logits_small, size=image.shape[-2:], mode="bilinear", align_corners=False)
         debug = False
