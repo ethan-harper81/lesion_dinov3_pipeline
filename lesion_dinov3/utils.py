@@ -205,3 +205,10 @@ def hann2d(tile_size: int) -> np.ndarray:
     win = np.outer(w, w).astype(np.float32)
     win = np.maximum(win, 1e-3)
     return win
+
+
+def format_duration(seconds: int) -> str:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{int(hours)}:{int(minutes):02d}:{int(secs):02d}"

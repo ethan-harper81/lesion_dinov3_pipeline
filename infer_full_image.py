@@ -105,10 +105,13 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     t1 = timeit.default_timer()
     print(f"Inference complete in {t1-t0:.2f} seconds. Found {len(pts)} candidates.")
 
+    prefix = image_path.split('\\')
+    prefix = prefix[0].split('/')[-1] + "_" + "_".join(prefix[1:])
+
     stem = os.path.splitext(os.path.basename(image_path))[0]
-    heat_path = os.path.join(out_dir, f"{stem}_lesion_heatmap.npy")
-    png_path = os.path.join(out_dir, f"{stem}_lesion_heatmap.png")
-    csv_path = os.path.join(out_dir, f"{stem}_candidates.csv")
+    heat_path = os.path.join(out_dir, f"{prefix}_lesion_heatmap.npy")
+    png_path = os.path.join(out_dir, f"{prefix}_lesion_heatmap.png")
+    csv_path = os.path.join(out_dir, f"{prefix}_candidates.csv")
     with tqdm(total=3, desc="save outputs") as pbar:
         np.save(heat_path, full_prob)
         pbar.update(1)

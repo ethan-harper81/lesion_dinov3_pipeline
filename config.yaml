@@ -7,14 +7,14 @@ data:
   # CSV columns: image_path, points_json, prior_path(optional)
   # points_json example: [[1234,567],[2222,3333]] in full-image pixel coordinates
   tile_size: 768
-  train_samples_per_epoch: 5000 #20000
+  train_samples_per_epoch: 10000 #20000
   positive_fraction: 0.40
   high_prior_negative_fraction: 0.30
   random_negative_fraction: 0.20
   low_prior_fraction: 0.10
   validation_sampling:
     enabled: true
-    samples_per_image: 8
+    samples_per_image: 80
     seed: 1337
     positive_fraction: 0.40
     high_prior_fraction: 0.30
@@ -35,9 +35,9 @@ model:
   head_channels: 256 
 
 train:
-  output_dir: runs/lesion_dinov3_vits_gradual_unfreeze
-  epochs: 15
-  unfreeze_epoch: 6
+  output_dir: runs/lesion_dinov3_vits_5_epochs_more_samples
+  epochs: 5
+  unfreeze_epoch: None
   batch_size: 8 #8
   head_lr: 0.0003
   backbone_lr: 0.000003

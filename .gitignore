@@ -6,3 +6,6 @@ runs/
 data*/
 __pycache__/
 *.png
+*.npy
+*.csv
+

@@ -12,13 +12,13 @@ import torch.nn.functional as F
 from lesion_dinov3.dataset import LesionTileDataset
 from lesion_dinov3.losses import focal_bce_with_logits, weighted_bce_with_logits, tversky_loss
 from lesion_dinov3.model import DINOv3LesionDetector
-from lesion_dinov3.utils import seed_everything
+from lesion_dinov3.utils import seed_everything, format_duration
 
 import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-
+import timeit
 
 def load_cfg(path):
     with open(path, "r") as f:
@@ -95,64 +95,38 @@ def main(cfg = None):
 
     fig, ax = plt.subplots(1, 2, figsize=(10, 5 ))
 
+    t0 = timeit.default_timer()
+
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
 
-        if epoch == int(cfg["train"].get("unfreeze_epoch", 5)):
+        # if epoch == int(cfg["train"].get("unfreeze_epoch", 5)):
 
-            print(f"Unfreezing backbone at epoch {epoch}")
+        #     print(f"Unfreezing backbone at epoch {epoch}")
 
-            for p in model.backbone.parameters():
-                p.requires_grad = False
-            for layer in model.backbone.model.layer[-1:]:
-                for p in layer.parameters():
-                    p.requires_grad = True
+        #     for p in model.backbone.parameters():
+        #         p.requires_grad = False
+        #     for layer in model.backbone.model.layer[-1:]:
+        #         for p in layer.parameters():
+        #             p.requires_grad = True
             
-            opt = torch.optim.AdamW(
-                [
-                    {
-                        "params": model.head.parameters(),
-                        "lr": cfg["train"]["head_lr"],
-                    },
-                    {
-                        "params": [
-                            p for p in model.backbone.parameters()
-                            if p.requires_grad
-                        ],
-                        "lr": cfg["train"]["backbone_lr"],
-                    },
-                ],
-                weight_decay=cfg["train"].get("weight_decay", 1e-4)
-            )
+        #     opt = torch.optim.AdamW(
+        #         [
+        #             {
+        #                 "params": model.head.parameters(),
+        #                 "lr": cfg["train"]["head_lr"],
+        #             },
+        #             {
+        #                 "params": [
+        #                     p for p in model.backbone.parameters()
+        #                     if p.requires_grad
+        #                 ],
+        #                 "lr": cfg["train"]["backbone_lr"],
+        #             },
+        #         ],
+        #         weight_decay=cfg["train"].get("weight_decay", 1e-4)
+        #     )
 
-            scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
-        
-        if epoch == 10:
-            print(f"Unfreezing more backbone at epoch {epoch}")
-
-            for p in model.backbone.parameters():
-                p.requires_grad = False
-            for layer in model.backbone.model.layer[-2:]:
-                for p in layer.parameters():
-                    p.requires_grad = True
-            
-            opt = torch.optim.AdamW(
-                [
-                    {
-                        "params": model.head.parameters(),
-                        "lr": cfg["train"]["head_lr"],
-                    },
-                    {
-                        "params": [
-                            p for p in model.backbone.parameters()
-                            if p.requires_grad
-                        ],
-                        "lr": cfg["train"]["backbone_lr"],
-                    },
-                ],
-                weight_decay=cfg["train"].get("weight_decay", 1e-4)
-            )
-
-            scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
+        #     scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
 
         model.train()
         running = 0.0
@@ -214,6 +188,12 @@ def main(cfg = None):
         if val_loss < best_val:
             best_val = val_loss
             torch.save(ckpt, os.path.join(cfg["train"]["output_dir"], "best.pt"))
+
+    t1 = timeit.default_timer()
+    try:
+        print(f"Total Training time: {format_duration(t1 - t0)}")
+    except Exception as e:
+        print(f"Error formatting duration: {e}. Total Training time in seconds: {t1 - t0:.2f}")
 
     # fig, ax = plt.subplots(1,2, figsize=(10, 5))
 

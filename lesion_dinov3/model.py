@@ -26,13 +26,29 @@ class DINOv3LesionDetector(nn.Module):
         prior_ch = 32 if use_prior else 0
         if use_prior:
             self.prior_proj = nn.Sequential(nn.Conv2d(1, 32, 3, padding=1), nn.ReLU(inplace=True))
-        self.head = nn.Sequential(
+
+        norm_head = nn.Sequential(
+            nn.Conv2d(hidden + prior_ch, head_channels, 3, padding=1),
+            nn.GroupNorm(8, head_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.1),
+
+            nn.Conv2d(head_channels, head_channels // 2, 3, padding=1),
+            nn.GroupNorm(8, head_channels // 2),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(head_channels // 2, 1, 1),
+        )
+
+        reg_head = nn.Sequential(
             nn.Conv2d(hidden + prior_ch, head_channels, 3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(head_channels, head_channels // 2, 3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(head_channels // 2, 1, 1),
         )
+
+        self.head = reg_head#norm_head
 
     def _tokens_to_grid(self, last_hidden_state: torch.Tensor, image_hw: Tuple[int, int]):
         # [B, prefix+N, C] -> [B, C, Gh, Gw]. DINOv3 may include CLS/register

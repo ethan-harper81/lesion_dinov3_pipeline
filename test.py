@@ -17,137 +17,62 @@ import matplotlib.patches as patches
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
-from PIL import Image
-
+from PIL import Image, ImageDraw
+import os
 import csv
+import pandas as pd
 
-fns = [[4653.12, 2012.0, 50.56],
-        [1625.28, 251.36, 32.0]]
+out_dir = 'validation_outputs/20_epochs'
 
-plt.imshow(Image.open(im))
+csvs = os.listdir(out_dir)
 
-nms_radius_px = 60
+csvs = [c for c in csvs if ".csv" in c]
+side= ['front', "back", "left", "right"]
 
-num_candidates = 25
+for i, c in enumerate(csvs):
+    if c == 'eval.csv':
+        continue
+    df = pd.read_csv(os.path.join(out_dir,c))
+    if len(df) > 0:
+        points = [[row['x'], row['y'], row['score']] for _, row in df.iterrows()]
+    else:
+        points = []
+    
+    prefix = c.split("_candidates")[0]
+    prefix = prefix.split('_')
+    split = prefix.index('wide') - 1
+    patient_name = "_".join(prefix[:split])
+    image_name = patient_name + "\\" + prefix[split] + "\\" + "_".join(prefix[split + 1:])
+    path = os.path.join("C:\\Users\\davoo\\Development\\LumoLesionClassifier", image_name)
+    
+    threshold = 0.75
 
-with open(csv_path, 'r', newline='') as csvfile:
-    reader = csv.reader(csvfile)
-    points = [row for row in reader]
-    total = 0
+    img = Image.open(path)
+    draw = ImageDraw.Draw(img)
 
-    for fn in fns:
-        min_dist = float('inf')
-        closest_point = None
-        for i, p in enumerate(points):
-            if i == 0:
-                continue
-            point = [float(p[0]), float(p[1]), float(p[2])]
-            d = np.sqrt((point[0] - fn[0]) ** 2 + (point[1] - fn[1]) ** 2)
-            if d < min_dist:
-                min_dist = d
-                closest_point = point
-            # if d < fn[2] / 2:
-            #     plt.scatter(float(p[0]), float(p[1]), c='g', s=5)
-            #     plt.scatter(fn[0], fn[1], c='r', s=5)
-            #     plt.plot([point[0], fn[0]], [point[1], fn[1]], 'b--', linewidth=0.5)
-            #     print(f"Point {point} is {d} pixels from fn {fn[:2]}.")
-        plt.scatter(closest_point[0], closest_point[1], c='g', s=5)
-        plt.scatter(fn[0], fn[1], c='r', s=5)
-        plt.plot([closest_point[0], fn[0]], [closest_point[1], fn[1]], 'b--', linewidth=0.5)
-        print
+    values = [v for _,_,v in points]
 
+    vmax = max(values)
+    vmin = min(values)
 
-    # for i, point in enumerate(points):
-        
-    #     # if i == num_candidates + 1:
-    #     #     break
-        
-    #     if i == 0:
-    #         continue  
-        
-    #     point = [float(point[0]), float(point[1]), float(point[2])]
-    #     if point[2] > .5:
-    #         total += 1
-    #         rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
-    #         plt.gca().add_patch(rect)
-    #         plt.scatter(point[0], point[1], c='g', s=2)
-        # else:
-        #     rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='y', facecolor='none')
-        #     plt.gca().add_patch(rect)
-            #plt.scatter(point[0], point[1], c='r', s=2)
-# plt.title(f"Total candidates > 0.5: {total / len(points) * 100:.2f}% of {len(points)}")
-plt.axis('off')
-# plt.show()
+    norm = mcolors.Normalize(vmin, vmax)
+    cmap = cm.get_cmap("RdYlGn_r")
 
-for p in fns:
-    plt.scatter(p[0], p[1], c='r', s=5)
+    box_size = 120
+    half = box_size // 2
 
-# fps = [(4075.1201171875, 1402.47998046875), (95.5199966430664, 4945.259765625), (614.7000122070312, 516.4299926757812), (1964.47998046875, 4255.0400390625), (1781.52001953125, 5624.9599609375)]
-# for fp in fps:
-#     plt.scatter(fp[0], fp[1], c='b', s=2)
+    for x,y,score in points:
+        rgba = cmap(norm(score))
+        color = tuple(int(c * 255) for c in rgba[:3])
+        draw.rectangle(
+            [
+                (x - half, y - half),
+                (x + half, y + half)
+            ],
+            outline='red',
+            width=10
+        )
+    save_name = c.split(".jpg")[0]
+    img.save(os.path.join("eval_images", save_name + '.png'))
 
 
-plt.show()
-# import pprint
-# from lesion_dinov3.utils import nms_points
-
-# pts = np.load("debug_pts.npy")
-# scores = np.load("debug_scores.npy")
-
-# pts, scores = nms_points(pts, scores, radius=60)
-
-# pts_index = np.where(scores > 0.5)[0]
-
-# scores = scores[pts_index]
-# pts = pts[pts_index]
-
-# nms_radius_px = 60
-
-# plt.imshow(Image.open(im))
-# # for i, (point, score) in enumerate(zip(pts, scores)):
-# #     plt.scatter(point[0], point[1], c='g', s=2)
-#         #plt.scatter(point[0], point[1], c=cmap(norm(score)), s=2)
-
-# # for point in og_points:
-# #     plt.scatter(point[0], point[1], c='r', s=2)
-
-# pts, scores = nms_points(pts, scores, radius=60)
-# crops = []
-# for i, point in enumerate(pts):
-#     # for p in og_points:
-#     #     if np.sqrt(((point[:-1] - p) ** 2).sum()) < nms_radius_px:
-#     #         continue
-#     #     else:
-#     #         crop = [point[0] - nms_radius_px, point[1] - nms_radius_px, point[0] + nms_radius_px, point[1] + nms_radius_px]
-#     #         image_crop = Image.open(im).crop(crop)
-#     #         crops.append(image_crop)
-#     #         image_crop.save(f"crops/crop_{i}.png")
-#     rect = patches.Rectangle((point[0] - nms_radius_px, point[1] - nms_radius_px), 2 * nms_radius_px, 2 * nms_radius_px, linewidth=1, edgecolor='g', facecolor='none')
-#     plt.gca().add_patch(rect)
-
-# # dists = []
-# # order = np.argsort(scores)[::-1]
-# # for i in order:
-# #     curr_point = pts[i]
-# #     score = scores[i]
-# #     if score < 0.5:
-# #         continue
-# #     # print(f"Point: {point}, Score: {score}")
-# #     for point in pts:
-# #         if np.array_equal(curr_point, point):
-# #             continue
-# #         d = np.sqrt(((curr_point - point) ** 2).sum())
-# #         dists.append([d, curr_point, point])
-# #         #print(f"Point {curr_point} is {d} pixels from point {point}.")
-# # dists.sort( key=lambda x: x[0])
-# # print(len(dists))
-# # for d, p1, p2 in dists:
-# #     if d < 200:
-# #         plt.scatter(p1[0], p1[1], c='g', s=10)
-# #         plt.plot([p1[0], p2[0]], [p1[1], p2[1]], 'b--', linewidth=0.5)
-            
-# # print(f"Loaded {len(pts)} points and {len(scores)} scores from debug files.")
-
-# plt.axis('off')
-
-# plt.show()
