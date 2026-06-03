@@ -35,8 +35,6 @@ def main(cfg = None):
 
     nw = cfg["data"].get("num_workers", 4)
 
-    loss_logits_small = cfg["train"].get("loss_logits_small", True)
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
     train_ds = LesionTileDataset(cfg["data"]["train_csv"], cfg, training=True)
     print(len(train_ds), "training samples")
@@ -64,8 +62,7 @@ def main(cfg = None):
         cfg["model"]["hf_model_name"],
         freeze_backbone=cfg["model"].get("freeze_backbone", True),
         use_prior=cfg["model"].get("use_prior", True),
-        head_channels=cfg["model"].get("head_channels", 256),
-        loss_logits_small=loss_logits_small
+        head_channels=cfg["model"].get("head_channels", 256)
     ).to(device)
 
 
@@ -75,8 +72,6 @@ def main(cfg = None):
 
     def compute_loss(logits, target, mode = "train"):
 
-        if loss_logits_small:
-            target = F.interpolate(target, size=logits.shape[-2:], mode="nearest")
         
         if cfg["train"].get("loss", "focal_bce") == "weighted_bce":
             loss = weighted_bce_with_logits(logits, target, cfg["train"].get("pos_weight", 20.0))

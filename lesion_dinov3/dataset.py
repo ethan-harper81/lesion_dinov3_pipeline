@@ -181,3 +181,151 @@ class LesionTileDataset(Dataset):
         p = torch.from_numpy(tile_prior[None]).float()
         y = torch.from_numpy(target[None]).float()
         return {"image": x, "prior": p, "target": y, "origin": torch.tensor([x0, y0]), "num_points": len(local_pts)}
+
+class MultiScaleLesionTileDataset(Dataset):
+    """
+    
+    CSV columns:
+      image_path_1: path to full-image resolution RGB image
+      image_path_2: path to 2x resolution RGB image
+      image_path_4: path to 4x resolution RGB image
+      image_path_8: path to 8x resolution RGB image
+      pts_json: JSON list [[x,y], ...] in full-image coordinates
+
+    """
+
+    def __init__(self, csv_path: str, cfg: Dict, training: bool = True):
+        self.df = pd.read_csv(csv_path)
+
+        self.cfg = cfg
+        self.training = training
+        self.tile = int(cfg["data"]["tile_size"])
+        self.sigma = float(cfg["data"]["sigma_px"])
+        self.samples_per_epoch = int(cfg["data"].get("train_samples_per_epoch", len(self.df)))
+        self.val_sampling = cfg["data"].get("validation_sampling", {})
+        self.diameter_aware = bool(cfg["data"].get("diameter_aware_heatmap", {}).get("enabled", False))
+
+        self.tile_sizes = [768, 624, 432, 224]
+        self.scales = [1, 2, 4, 8]
+
+        self.records = []
+
+        column_names = self.df.columns.to_list()
+        pts_columns = [col for col in column_names if "points" in col]
+        path_columns = [col for col in column_names if "path" in col]
+        pts_columns.sort()
+        path_columns.sort()
+        points_column = "points_json" if "points_json" in column_names else "pts_json"
+
+        for _, row in self.df.iterrows():
+            self.records.append({
+                "image_path_1": row["image_path_1"],
+                "image_path_2": row["image_path_2"],
+                "image_path_4": row["image_path_4"],
+                "image_path_8": row["image_path_8"],
+                "points": parse_points(row.get(points_column, "[]")),
+
+            })
+        
+        #Full res diameter
+        self.avg_diameter = np.mean([p[2] for r in self.records for p in r["points"]]) if self.diameter_aware else None
+
+        self.pos_indices = [i for i, r in enumerate(self.records) if len(r["points"]) > 0]
+        self.all_indices = list(range(len(self.records)))
+        self.val_tiles = None
+        
+    def __len__(self):
+        if self.training:
+            return self.samples_per_epoch * 4
+        if self.val_tiles is not None:
+            return len(self.val_tiles)
+        return len(self.records)
+
+    def _sample_record(self):
+        """
+        returns a single record
+        """
+        if self.training and random.random() < float(self.cfg["data"].get("positive_fraction", 0.4)) and self.pos_indices:
+            return self.records[random.choice(self.pos_indices)], "positive"
+        return self.records[random.choice(self.all_indices)], "mixed"
+        
+    def _choose_tile(self, img, points, mode, rng=random):
+        h,w = img.shape[:2]
+
+        tile = self.tile_sizes[0]
+        if mode == "positive" and len(points) > 0:
+            x,y, _ = rng.choice(points)
+            jitter = tile //3
+            x0 = int(x - tile / 2 + rng.randint(-jitter, jitter))
+            y0 = int(y - tile / 2 + rng.randint(-jitter, jitter))
+            return valid_tile_origin(x0, y0, w, h, tile)
+        
+        return rng.randint(0, max(0, w - tile)), rng.randint(0, max(0, h - tile))
+
+    def _points_in_scaled_tile(self, points, x0, y0, tile_size, scale):
+        local = []
+        x1 = x0 + tile_size * scale
+        y1 = y0 + tile_size * scale
+        for x, y, d in points:
+            if x0 <= x < x1 and y0 <= y < y1:
+                local.append(((x - x0) / scale, (y - y0) / scale, d))
+        return local
+        
+    def __getitem__(self, idx):
+        if self.training:
+            rec, mode = self._sample_record()
+            fixed_origin = None
+        
+        imgs = [read_rgb(rec["image_path_1"]),read_rgb(rec["image_path_2"]), read_rgb(rec["image_path_4"]),read_rgb(rec["image_path_8"])]
+
+        if self.training:
+            x0,y0 = self._choose_tile(imgs[0], rec['points'], mode)
+        
+        tiles = [
+            img[
+                y0 // s: y0 // s + tile_size, 
+                x0 // s: x0 // s + tile_size, 
+            ] for img, tile_size, s in zip(imgs, self.tile_sizes, self.scales)
+        ]
+
+        for i in range(len(tiles)):
+            expected = self.tile_sizes[i]
+            h, w = tiles[i].shape[:2]
+
+            if h != expected or w != expected:
+                tiles[i] = cv2.copyMakeBorder(
+                    tiles[i],
+                    0, expected - h,
+                    0, expected - w,
+                    cv2.BORDER_REFLECT
+                )
+        local_pts_by_scale = [
+            self._points_in_scaled_tile(rec["points"], x0, y0, tile, scale)
+            for tile, scale in zip(self.tile_sizes, self.scales)
+        ]
+        local_pts = local_pts_by_scale[0]
+        targets = []
+        if self.diameter_aware:
+            targets = [make_diameter_aware_heatmap(
+                tile, tile, pts,
+                image_scale=scale,
+                sigma_factor=self.avg_diameter / self.sigma,
+                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), 
+                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 50.0 / scale)
+            ) for tile, scale, pts in zip(self.tile_sizes, self.scales, local_pts_by_scale)
+            ]
+        else:
+            targets = [
+                make_heatmap(tile, tile, pts, self.sigma / scale)
+                for tile, scale, pts in zip(self.tile_sizes, self.scales, local_pts_by_scale)
+            ]
+
+        xs = [torch.from_numpy(tile).float().permute(2,0,1) / 255.0 for tile in tiles]
+        ys = [torch.from_numpy(target[None]).float() for target in targets]
+
+        return {
+            "images": xs,
+            "targets": ys,
+            "origins": [torch.tensor([x0 // scale,y0 //scale]) for scale in self.scales],
+            "num_points": len(local_pts)
+        }

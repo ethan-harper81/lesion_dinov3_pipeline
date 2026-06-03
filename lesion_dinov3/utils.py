@@ -56,7 +56,8 @@ def read_prior(path: str, shape_hw: Tuple[int, int]) -> np.ndarray:
 def make_heatmap(h: int, w: int, points: Sequence[Point], sigma: float) -> np.ndarray:
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     hm = np.zeros((h, w), dtype=np.float32)
-    for x, y in points:
+    for point in points:
+        x, y = point[:2]
         print(f"point ({x:.1f}, {y:.1f}), sigma={sigma:.2f}")
         if x < 0 or y < 0 or x >= w or y >= h:
             continue
@@ -73,7 +74,7 @@ def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_s
         if x < 0 or y < 0 or x >= w or y >= h:
             continue
         d_scaled = d / image_scale
-        sigma = np.clip(d / sigma_factor, min_sigma, max_sigma)
+        sigma = np.clip(d_scaled / sigma_factor, min_sigma, max_sigma)
         # print(f"point ({x:.1f}, {y:.1f}), diameter={d:.1f}, sigma={sigma:.2f}")
         g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)).astype(np.float32)
         hm = np.maximum(hm, g)

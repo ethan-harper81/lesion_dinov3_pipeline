@@ -2,8 +2,8 @@
 seed: 1337
 
 data:
-  train_csv: data_final/train.csv
-  val_csv: data_final/val.csv
+  train_csv: data_multiscale/train.csv
+  val_csv: data_multiscale/val.csv
   # CSV columns: image_path, points_json, prior_path(optional)
   # points_json example: [[1234,567],[2222,3333]] in full-image pixel coordinates
   tile_size: 768
@@ -35,8 +35,8 @@ model:
   head_channels: 256 
 
 train:
-  output_dir: runs/lesion_dinov3_vits_5_epochs_more_samples
-  epochs: 5
+  output_dir: runs/lesion_dinov3_vits_multiscale
+  epochs: 10
   unfreeze_epoch: None
   batch_size: 8 #8
   head_lr: 0.0003

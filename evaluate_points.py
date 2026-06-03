@@ -10,6 +10,9 @@ import matplotlib.patches as patches
 
 from scipy import integrate
 
+import argparse
+import os
+
 
 def parse_gt(s):
 
@@ -32,7 +35,7 @@ def match_points(pred, gts, tol):
     tp = 0
     i = 0
     for p in pred:
-        d= np.sqrt(((gt - p) ** 2).sum(axis=1))
+        d = np.sqrt(((gt - p) ** 2).sum(axis=1))
         j = int(np.argmin(d)) if len(d) else -1
         
         # if j in inds:
@@ -52,8 +55,9 @@ def test(manifest, threshold=0.3):
     df = pd.read_csv(manifest)
     total_tp = total_fp = total_fn = 0
     num_candidates = 0
+    fn_rows = []
     for i, row in df.iterrows():
-        print(f"Evaluating row {i + 1}/{len(df)}: {row['image_path']}")
+        #print(f"Evaluating row {i + 1}/{len(df)}: {row['image_path']}")
         gt = parse_gt(row["points_json"])
         p = pd.read_csv(row["pred_csv"])
         p = p[p["score"] >= threshold]
@@ -66,12 +70,16 @@ def test(manifest, threshold=0.3):
             tp, fp, fn, fn_points = out
             fn_indices = np.arange(len(fn_points))  # Create dummy indices if not returned
         total_tp += tp; total_fp += fp; total_fn += fn
+        fn_rows.append({
+                "image_path": row["image_path"],
+                "points": json.dumps(fn_points.tolist(), separators=(",", ":")),
+            })
 
     sens = total_tp / max(1, total_tp + total_fn)
     prec = total_tp / max(1, total_tp + total_fp)
     fpi = total_fp / max(1, len(df))
 
-    return [ threshold, total_tp, sens, num_candidates, num_candidates - total_tp, np.round((num_candidates - total_tp ) / len(df)) ]
+    return [ threshold, total_tp, sens, num_candidates, num_candidates - total_tp, np.round((num_candidates - total_tp ) / len(df)) ], pd.DataFrame(fn_rows, columns=["image_path", "points"])
 
     print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
            "tp": total_tp, "fp": total_fp, "fn": total_fn})
@@ -117,12 +125,23 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    thresholds = [i / 20 for i in range(1, 21)]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--val_out_dir")
+    args = parser.parse_args()
+
+    eval_file = args.val_out_dir + "/eval.csv"
+
+    assert os.path.exists(eval_file), "Manifest File Does Not Exist"
+
+    thresholds = [i / 20 for i in range(1, 20)]
     df = pd.DataFrame(columns=["Threshold", "Matched Points", "Sensitivity", "Candidates", "Unmatched Points", "Unmatched Points per Image"])
     for score_threshold in thresholds:
         print(f"Evaluating at threshold {score_threshold}")
-        out = test("validation_outputs\\20_epochs_test\\eval.csv", threshold=score_threshold)
+        out, fns = test(eval_file, threshold=score_threshold)
+
+        if score_threshold == 0.75:
+            fns.to_csv(args.val_out_dir+"/false_negative_0_75.csv", index=False)
        
         df.loc[len(df)] =  out
     print(df)
@@ -140,6 +159,7 @@ if __name__ == "__main__":
     y_sorted = y[order]
 
     auc = integrate.trapezoid(y_sorted, x_sorted)
+    print(args.val_out_dir, ": ", auc)
 
     plt.figure(figsize=(10, 5))
     plt.plot(unmatched_points, sensitivity, marker='o', label='Sensitivity', color='blue')
@@ -154,6 +174,7 @@ if __name__ == "__main__":
     plt.ylabel('Sensitivity')
     plt.title('Sensitivity vs Unmatched Points - AUC: {:.4f}'.format(auc / max(unmatched_points)))
     plt.legend()
-    plt.show()
+    plt.savefig(args.val_out_dir + '/FROC.png')
+
     
 
