@@ -65,7 +65,7 @@ def make_heatmap(h: int, w: int, points: Sequence[Point], sigma: float) -> np.nd
         hm = np.maximum(hm, g)
     return hm
 
-def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_scale: int = 1, sigma_factor: float = 25, min_sigma: float = 1.0, max_sigma: float = 6) -> np.ndarray:
+def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_scale: int = 1, min_sigma: float = 3.0, max_sigma: float = 12) -> np.ndarray:
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     hm = np.zeros((h, w), dtype=np.float32)
 
@@ -73,10 +73,11 @@ def make_diameter_aware_heatmap(h: int, w: int, points: Sequence[Point], image_s
     for x, y, d in points:
         if x < 0 or y < 0 or x >= w or y >= h:
             continue
-        d_scaled = d / image_scale
-        sigma = np.clip(d_scaled / sigma_factor, min_sigma, max_sigma)
-        # print(f"point ({x:.1f}, {y:.1f}), diameter={d:.1f}, sigma={sigma:.2f}")
-        g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)).astype(np.float32)
+        radius = d * 0.5
+        sigma_1x = np.clip(0.25 * radius, min_sigma, max_sigma) # base sigma at original image scale
+        sigma_s = max(1.0, sigma_1x / image_scale) # sigma scaled to output resolution
+
+        g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma_s ** 2)).astype(np.float32)
         hm = np.maximum(hm, g)
     return hm
 

@@ -170,9 +170,9 @@ class LesionTileDataset(Dataset):
             target = make_diameter_aware_heatmap(
                 self.tile, self.tile, local_pts, 
                 image_scale=1, 
-                sigma_factor=self.avg_diameter / self.sigma, 
-                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), 
-                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 50.0)
+
+                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 3.0), 
+                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 12.0)
             )
         else:
             target = make_heatmap(self.tile, self.tile, local_pts, self.sigma)
@@ -309,14 +309,13 @@ class MultiScaleLesionTileDataset(Dataset):
             targets = [make_diameter_aware_heatmap(
                 tile, tile, pts,
                 image_scale=scale,
-                sigma_factor=self.avg_diameter / self.sigma,
-                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 1.0), 
-                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 50.0 / scale)
+                min_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("min_sigma", 3.0), 
+                max_sigma=self.cfg["data"]["diameter_aware_heatmap"].get("max_sigma", 12.0 / scale)
             ) for tile, scale, pts in zip(self.tile_sizes, self.scales, local_pts_by_scale)
             ]
         else:
             targets = [
-                make_heatmap(tile, tile, pts, self.sigma / scale)
+                make_heatmap(tile, tile, pts, max(1.0, self.sigma / scale))
                 for tile, scale, pts in zip(self.tile_sizes, self.scales, local_pts_by_scale)
             ]
 
