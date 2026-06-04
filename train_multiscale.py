@@ -63,6 +63,8 @@ def main(cfg = None):
         use_prior=cfg["model"].get("use_prior", True),
         head_channels=cfg["model"].get("head_channels", 256)
     ).to(device)
+    print(model.use_prior)
+    print(model.head)
 
     def compute_loss(logits, target, mode = "train"):
 
@@ -121,16 +123,16 @@ def main(cfg = None):
 
         model.eval()
         val_loss = 0.0
-        with torch.no_grad():
-            for batch in tqdm(val_loader, desc=f"epoch {epoch} val"):
-                image = batch["image"].to(device, non_blocking=True)
-                prior = batch["prior"].to(device, non_blocking=True)
-                target = batch["target"].to(device, non_blocking=True)
-                logits = model(image, prior)
-                val_loss += float(compute_loss(logits, target))
-        val_loss /= max(1, len(val_loader))
-        print(f"epoch={epoch} val_loss={val_loss:.6f}")
-        validation_loss_history.append(val_loss)
+        # with torch.no_grad():
+        #     for batch in tqdm(val_loader, desc=f"epoch {epoch} val"):
+        #         image = batch["image"].to(device, non_blocking=True)
+        #         prior = batch["prior"].to(device, non_blocking=True)
+        #         target = batch["target"].to(device, non_blocking=True)
+        #         logits = model(image, prior)
+        #         val_loss += float(compute_loss(logits, target))
+        # val_loss /= max(1, len(val_loader))
+        # print(f"epoch={epoch} val_loss={val_loss:.6f}")
+        # validation_loss_history.append(val_loss)
 
         ckpt = {"model": model.state_dict(), "cfg": cfg, "epoch": epoch, "val_loss": val_loss}
         if epoch % int(cfg["train"].get("save_every", 1)) == 0:
@@ -143,10 +145,10 @@ def main(cfg = None):
     ax[0].set_ylabel('Loss')
     ax[0].set_title('Training Loss')
 
-    ax[1].plot(list(range(1, len(validation_loss_history) + 1)), validation_loss_history)
-    ax[1].set_xlabel('Epoch')
-    ax[1].set_ylabel('Loss')
-    ax[1].set_title('Validation Loss')
+    # ax[1].plot(list(range(1, len(validation_loss_history) + 1)), validation_loss_history)
+    # ax[1].set_xlabel('Epoch')
+    # ax[1].set_ylabel('Loss')
+    # ax[1].set_title('Validation Loss')
 
     fig.tight_layout()
     plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))

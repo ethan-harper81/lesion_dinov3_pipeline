@@ -31,11 +31,11 @@ data:
 model:
   hf_model_name: facebook/dinov3-vits16-pretrain-lvd1689m
   freeze_backbone: true
-  use_prior: false
+  use_prior: true
   head_channels: 256 
 
 train:
-  output_dir: runs/lesion_dinov3_vits_multiscale
+  output_dir: runs/lesion_dinov3_vits_multiscale_no_final_prior
   epochs: 10
   unfreeze_epoch: None
   batch_size: 8 #8

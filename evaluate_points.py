@@ -26,7 +26,7 @@ def parse_gt(s):
 def match_points(pred, gts, tol):
     #print(f"match_points: pred.shape={pred.shape}, gt.shape={gt.shape}, tol={tol}")
     if len(gts) == 0:
-        return 0, len(pred), 0, np.zeros((0, 2), dtype=np.float32)
+        return 0, len(pred), 0, np.zeros((0, 2), dtype=np.float32), None, None
 
     gt = gts[:, :2] 
     tol = gts[:, -1]  
@@ -34,22 +34,24 @@ def match_points(pred, gts, tol):
     used = np.zeros(len(gt), dtype=bool)
     tp = 0
     i = 0
-    for p in pred:
-        d = np.sqrt(((gt - p) ** 2).sum(axis=1))
+    tp_points = []
+    unmatched_points = []
+    for x,y,score in pred:
+        d = np.sqrt(((gt - np.array([x, y])) ** 2).sum(axis=1))
         j = int(np.argmin(d)) if len(d) else -1
-        
-        # if j in inds:
-        #     print(f"pred point {i}: {p}, closest gt index: {j}, distance: {d[j] if j >= 0 else 'N/A'}, tol: {tol[j] if j >= 0 else 'N/A'}")
-
+    
         i += 1
         if j >= 0 and d[j] <= tol[j] / 2 and not used[j]:
+            tp_points.append([x, y, score])
             used[j] = True
             tp += 1
+        else:
+            unmatched_points.append([x, y, score])
     fp = len(pred) - tp
     fn = len(gt) - tp
     fn_points = gt[~used]
     fn_indices = np.where(~used)[0]
-    return tp, fp, fn, fn_points, fn_indices
+    return tp, fp, fn, fn_points, fn_indices, {"tp_points": tp_points, "unmatched_points": unmatched_points}
 
 def test(manifest, threshold=0.3):
     df = pd.read_csv(manifest)
@@ -57,18 +59,15 @@ def test(manifest, threshold=0.3):
     num_candidates = 0
     fn_rows = []
     for i, row in df.iterrows():
-        #print(f"Evaluating row {i + 1}/{len(df)}: {row['image_path']}")
         gt = parse_gt(row["points_json"])
         p = pd.read_csv(row["pred_csv"])
         p = p[p["score"] >= threshold]
         num_candidates += len(p)
-        pred = p[["x", "y"]].to_numpy(dtype=np.float32)
+        pred = p[["x", "y", 'score']].to_numpy(dtype=np.float32)
         out = match_points(pred, gt, tol=24)
-        if len(out) == 5:
-            tp, fp, fn, fn_points, fn_indices = out
-        else:
-            tp, fp, fn, fn_points = out
-            fn_indices = np.arange(len(fn_points))  # Create dummy indices if not returned
+        
+        tp, fp, fn, fn_points, fn_indices, extra = out
+  # Create dummy indices if not returned
         total_tp += tp; total_fp += fp; total_fn += fn
         fn_rows.append({
                 "image_path": row["image_path"],
@@ -79,7 +78,7 @@ def test(manifest, threshold=0.3):
     prec = total_tp / max(1, total_tp + total_fp)
     fpi = total_fp / max(1, len(df))
 
-    return [ threshold, total_tp, sens, num_candidates, num_candidates - total_tp, np.round((num_candidates - total_tp ) / len(df)) ], pd.DataFrame(fn_rows, columns=["image_path", "points"])
+    return [ threshold, total_tp, sens, num_candidates, num_candidates - total_tp, np.round((num_candidates - total_tp ) / len(df)) ], pd.DataFrame(fn_rows, columns=["image_path", "points"]), extra
 
     print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
            "tp": total_tp, "fp": total_fp, "fn": total_fn})
@@ -115,11 +114,11 @@ def main():
     sens = total_tp / max(1, total_tp + total_fn)
     prec = total_tp / max(1, total_tp + total_fp)
     fpi = total_fp / max(1, len(df))
-    print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
-           "tp": total_tp, "fp": total_fp, "fn": total_fn})
+    # print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
+    #        "tp": total_tp, "fp": total_fp, "fn": total_fn})
     
     fns = [(fn['x'], fn['y']) for fn in fn_rows]
-    print(fns)
+    # print(fns)
     if args.fn_out_csv:
         pd.DataFrame(fn_rows, columns=["image_path", "pred_csv", "x", "y"]).to_csv(args.fn_out_csv, index=False)
 
@@ -132,21 +131,37 @@ if __name__ == "__main__":
 
     eval_file = args.val_out_dir + "/eval.csv"
 
+    tp_scores = []
+    unmatched_scores = []
+
+    fig,ax = plt.subplots(1, 2, figsize=(10, 5))
+
     assert os.path.exists(eval_file), "Manifest File Does Not Exist"
 
     thresholds = [i / 20 for i in range(1, 20)]
     df = pd.DataFrame(columns=["Threshold", "Matched Points", "Sensitivity", "Candidates", "Unmatched Points", "Unmatched Points per Image"])
     for score_threshold in thresholds:
-        print(f"Evaluating at threshold {score_threshold}")
-        out, fns = test(eval_file, threshold=score_threshold)
-
-        if score_threshold == 0.75:
-            fns.to_csv(args.val_out_dir+"/false_negative_0_75.csv", index=False)
-       
+        out, fns, extra = test(eval_file, threshold=score_threshold)
         df.loc[len(df)] =  out
-    print(df)
+    #print(df)
+
+    
+    filtered = df[df["Sensitivity"] > 0.92]
+    if not len(filtered):
+        filtered = df[df["Sensitivity"] < 0.92]
+        result_row = filtered.loc[filtered["Sensitivity"].idxmax()]
+    result_row = filtered.loc[filtered["Threshold"].idxmax()]
+    sens = result_row["Sensitivity"]
+    unmatched_per_image = result_row["Unmatched Points per Image"]
+    q = 1 / (1 + .0111 * unmatched_per_image)
+    mss = 2 * sens * q / (sens + q)
+    print("---" + args.val_out_dir + "---")
+    print("Best Results at Sensitivity > 0.92:")
+    print(f"MSS: {mss}")
+    print(result_row.to_dict())
 
     unmatched_points = df["Unmatched Points"].tolist()
+    candidates = df["Candidates"].tolist()
     sensitivity = df["Sensitivity"].tolist()
 
     x = np.array(df["Unmatched Points"], dtype=float)
@@ -159,7 +174,7 @@ if __name__ == "__main__":
     y_sorted = y[order]
 
     auc = integrate.trapezoid(y_sorted, x_sorted)
-    print(args.val_out_dir, ": ", auc)
+    print("AUC", ": ", auc / unmatched_points[0])
 
     plt.figure(figsize=(10, 5))
     plt.plot(unmatched_points, sensitivity, marker='o', label='Sensitivity', color='blue')

@@ -6,7 +6,7 @@ import sys
 
 
 
-def infer_validation_files(val_csv, checkpoint, out_dir):
+def infer_validation_files(val_csv, checkpoint, out_dir, multiscale=True):
 
     df = pd.read_csv(val_csv)
 
@@ -16,7 +16,13 @@ def infer_validation_files(val_csv, checkpoint, out_dir):
         points_json = row["points_json"]
         prior_path = row["prior_path"]
 
-        subprocess.run([sys.executable, "infer_full_image.py", "--checkpoint", checkpoint, "--image", image_path, "--out_dir", out_dir])
+        exe = [
+            sys.executable, "infer_full_image.py", "--checkpoint", checkpoint, "--image", image_path, "--out_dir", out_dir, "--multiscale"
+        ] if multiscale else [
+            sys.executable, "infer_full_image.py", "--checkpoint", checkpoint, "--image", image_path, "--out_dir", out_dir
+        ]  
+
+        subprocess.run(exe)
         
 
 def create_eval(val_output_dir, val_csv):
@@ -45,10 +51,10 @@ def create_eval(val_output_dir, val_csv):
 
 if __name__ == "__main__":
     #Name of training run to evaluate
-    val_output_dir = "validation_outputs/multiscale_epoch_1"
+    val_output_dir = "multiscale_test_output/epoch_10"
     val_csv = "data_multiscale/val.csv"
-    run = "runs/lesion_dinov3_vits_multiscale/epoch_1.pt"
-    #infer_validation_files(val_csv, run, val_output_dir)
+    run = "runs/lesion_dinov3_vits_multiscale/epoch_10.pt"
+    infer_validation_files(val_csv, run, val_output_dir)
     create_eval(val_output_dir, val_csv)
 
         
