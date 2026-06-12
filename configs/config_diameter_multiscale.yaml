@@ -1,0 +1,57 @@
+# Separate multiscale lesion center + diameter training config.
+seed: 1337
+
+data:
+  train_csv: data_multiscale/train.csv
+  val_csv: data_multiscale/val.csv
+  # train_csv columns: image_path_1,image_path_2,image_path_4,image_path_8,points_json
+  # points_json example: [[1234,567,42.0],[2222,3333,84.0]]
+  # val_csv columns: image_path,points_json,prior_path(optional)
+  tile_size: 768
+  multiscale_tile_sizes: [768, 624, 432, 224]
+  multiscale_scales: [1, 2, 4, 8]
+  train_samples_per_epoch: 10000
+  positive_fraction: 0.40
+  high_prior_negative_fraction: 0.30
+  low_prior_fraction: 0.10
+  validation_sampling:
+    enabled: true
+    samples_per_image: 80
+    seed: 1337
+    positive_fraction: 0.40
+  prior_threshold: 0.35
+  sigma_px: 6
+  diameter_mask_threshold: 0.25
+  channels: 3
+  num_workers: 6
+
+model:
+  hf_model_name: facebook/dinov3-vits16-pretrain-lvd1689m
+  freeze_backbone: true
+  use_prior: true
+  head_channels: 256
+
+train:
+  output_dir: runs/lesion_dinov3_vits_diameter_multiscale_no_final_prior
+  epochs: 10
+  batch_size: 8
+  head_lr: 0.0003
+  backbone_lr: 0.000003
+  weight_decay: 0.0001
+  amp: true
+  loss: focal_bce
+  pos_weight: 20.0
+  focal_gamma: 2.0
+  lambda_size: 0.25
+  multiscale_loss_weights: [0.1, 0.25, 0.5, 1.0]
+  save_every: 1
+
+infer:
+  checkpoint: runs/lesion_dinov3_vits_diameter_multiscale_no_final_prior/best.pt
+  tile_size: 768
+  stride: 512
+  batch_size: 8
+  threshold: 0.30
+  nms_radius_px: 30
+  max_candidates: 5000
+  prior_blend_alpha: 0.0

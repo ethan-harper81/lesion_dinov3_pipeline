@@ -51,10 +51,10 @@ def create_eval(val_output_dir, val_csv):
 
 if __name__ == "__main__":
     #Name of training run to evaluate
-    val_output_dir = "multiscale_test_output/epoch_10"
+    val_output_dir = "multiscale_no_final_prior_output/epoch_10"
     val_csv = "data_multiscale/val.csv"
-    run = "runs/lesion_dinov3_vits_multiscale/epoch_10.pt"
-    infer_validation_files(val_csv, run, val_output_dir)
+    run = "runs/lesion_dinov3_vits_multiscale_no_final_prior/epoch_10.pt"
+    infer_validation_files(val_csv, run, val_output_dir, multiscale=False)
     create_eval(val_output_dir, val_csv)
 
         

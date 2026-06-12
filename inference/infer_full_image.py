@@ -173,9 +173,10 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     stride = int(cfg["infer"]["stride"])
 
     full_prob_gpu = _infer_probability_map(image_path, prior, model, cfg, tile, stride)
+    t1 = timeit.default_timer()
     heat_path, png_path, csv_path, num_candidates = _save_inference_outputs(image_path, out_dir, full_prob_gpu, cfg)
 
-    t1 = timeit.default_timer()
+    
     print(f"Inference complete in {t1-t0:.2f} seconds. Found {num_candidates} candidates.")
 
     return heat_path, png_path, csv_path

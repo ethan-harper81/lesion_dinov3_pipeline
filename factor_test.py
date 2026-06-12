@@ -5,8 +5,8 @@ import yaml
 import csv
 import json
 
-from train import main as train
-from infer_full_image import main as infer
+from training.train import main as train
+from inference.infer_full_image import main as infer
 import numpy as np
 
 from PIL import Image

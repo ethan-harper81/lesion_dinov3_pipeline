@@ -146,9 +146,9 @@ if __name__ == "__main__":
     #print(df)
 
     
-    filtered = df[df["Sensitivity"] > 0.92]
+    filtered = df[df["Sensitivity"] > 0.95]
     if not len(filtered):
-        filtered = df[df["Sensitivity"] < 0.92]
+        filtered = df[df["Sensitivity"] < 0.95]
         result_row = filtered.loc[filtered["Sensitivity"].idxmax()]
     result_row = filtered.loc[filtered["Threshold"].idxmax()]
     sens = result_row["Sensitivity"]
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     q = 1 / (1 + .0111 * unmatched_per_image)
     mss = 2 * sens * q / (sens + q)
     print("---" + args.val_out_dir + "---")
-    print("Best Results at Sensitivity > 0.92:")
+    print("Best Results at Sensitivity > 0.95:")
     print(f"MSS: {mss}")
     print(result_row.to_dict())
 
