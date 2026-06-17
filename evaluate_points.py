@@ -36,7 +36,8 @@ def match_points(pred, gts, tol):
     i = 0
     tp_points = []
     unmatched_points = []
-    for x,y,score in pred:
+    score = 0
+    for x,y in pred:
         d = np.sqrt(((gt - np.array([x, y])) ** 2).sum(axis=1))
         j = int(np.argmin(d)) if len(d) else -1
     
@@ -101,7 +102,7 @@ def main():
         p = pd.read_csv(row["pred_csv"])
         p = p[p["score"] >= args.score_threshold]
         pred = p[["x", "y"]].to_numpy(dtype=np.float32)
-        tp, fp, fn, fn_points = match_points(pred, gt, args.tol)
+        tp, fp, fn, fn_points, _, fp_points = match_points(pred, gt, args.tol)
         for x, y in fn_points:
             fn_rows.append({
                 "image_path": row["image_path"],
@@ -114,82 +115,85 @@ def main():
     sens = total_tp / max(1, total_tp + total_fn)
     prec = total_tp / max(1, total_tp + total_fp)
     fpi = total_fp / max(1, len(df))
-    # print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
-    #        "tp": total_tp, "fp": total_fp, "fn": total_fn})
+    print({"sensitivity": sens, "precision": prec, "false_positives_per_image": fpi,
+           "tp": total_tp, "fp": total_fp, "fn": total_fn})
     
     fns = [(fn['x'], fn['y']) for fn in fn_rows]
-    # print(fns)
+    print(fns)
+    print([[int(fp[0]), int(fp[1])] for fp in fp_points['unmatched_points']])
     if args.fn_out_csv:
         pd.DataFrame(fn_rows, columns=["image_path", "pred_csv", "x", "y"]).to_csv(args.fn_out_csv, index=False)
 
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--val_out_dir")
-    args = parser.parse_args()
+    main()
 
-    eval_file = args.val_out_dir + "/eval.csv"
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--val_out_dir")
+    # args = parser.parse_args()
 
-    tp_scores = []
-    unmatched_scores = []
+    # eval_file = args.val_out_dir + "/eval.csv"
 
-    fig,ax = plt.subplots(1, 2, figsize=(10, 5))
+    # tp_scores = []
+    # unmatched_scores = []
 
-    assert os.path.exists(eval_file), "Manifest File Does Not Exist"
+    # fig,ax = plt.subplots(1, 2, figsize=(10, 5))
 
-    thresholds = [i / 20 for i in range(1, 20)]
-    df = pd.DataFrame(columns=["Threshold", "Matched Points", "Sensitivity", "Candidates", "Unmatched Points", "Unmatched Points per Image"])
-    for score_threshold in thresholds:
-        out, fns, extra = test(eval_file, threshold=score_threshold)
-        df.loc[len(df)] =  out
-    #print(df)
+    # assert os.path.exists(eval_file), "Manifest File Does Not Exist"
+
+    # thresholds = [i / 20 for i in range(1, 20)]
+    # df = pd.DataFrame(columns=["Threshold", "Matched Points", "Sensitivity", "Candidates", "Unmatched Points", "Unmatched Points per Image"])
+    # for score_threshold in thresholds:
+    #     out, fns, extra = test(eval_file, threshold=score_threshold)
+    #     df.loc[len(df)] =  out
+    # #print(df)
 
     
-    filtered = df[df["Sensitivity"] > 0.95]
-    if not len(filtered):
-        filtered = df[df["Sensitivity"] < 0.95]
-        result_row = filtered.loc[filtered["Sensitivity"].idxmax()]
-    result_row = filtered.loc[filtered["Threshold"].idxmax()]
-    sens = result_row["Sensitivity"]
-    unmatched_per_image = result_row["Unmatched Points per Image"]
-    q = 1 / (1 + .0111 * unmatched_per_image)
-    mss = 2 * sens * q / (sens + q)
-    print("---" + args.val_out_dir + "---")
-    print("Best Results at Sensitivity > 0.95:")
-    print(f"MSS: {mss}")
-    print(result_row.to_dict())
+    # filtered = df[df["Sensitivity"] > 0.95]
+    # if not len(filtered):
+    #     filtered = df[df["Sensitivity"] < 0.95]
+    #     result_row = filtered.loc[filtered["Sensitivity"].idxmax()]
+    # result_row = filtered.loc[filtered["Threshold"].idxmax()]
+    # sens = result_row["Sensitivity"]
+    # unmatched_per_image = result_row["Unmatched Points per Image"]
+    # q = 1 / (1 + .0111 * unmatched_per_image)
+    # mss = 2 * sens * q / (sens + q)
+    # print("---" + args.val_out_dir + "---")
+    # print("Best Results at Sensitivity > 0.95:")
+    # print(f"MSS: {mss}")
+    # print(result_row.to_dict())
 
-    unmatched_points = df["Unmatched Points"].tolist()
-    candidates = df["Candidates"].tolist()
-    sensitivity = df["Sensitivity"].tolist()
+    # unmatched_points = df["Unmatched Points"].tolist()
+    # candidates = df["Candidates"].tolist()
+    # sensitivity = df["Sensitivity"].tolist()
 
-    x = np.array(df["Unmatched Points"], dtype=float)
-    y = np.array(df["Sensitivity"], dtype=float)
-    order = np.argsort(x)
-    x_sorted = x[order]
-    # x_min = np.min(x_sorted)
-    # x_max = np.max(x_sorted)
-    # x_sorted = [(x-min(x_sorted)) / (max(x_sorted) - min(x_sorted)) for x in x_sorted]
-    y_sorted = y[order]
+    # x = np.array(df["Unmatched Points"], dtype=float)
+    # y = np.array(df["Sensitivity"], dtype=float)
+    # order = np.argsort(x)
+    # x_sorted = x[order]
+    # # x_min = np.min(x_sorted)
+    # # x_max = np.max(x_sorted)
+    # # x_sorted = [(x-min(x_sorted)) / (max(x_sorted) - min(x_sorted)) for x in x_sorted]
+    # y_sorted = y[order]
 
-    auc = integrate.trapezoid(y_sorted, x_sorted)
-    print("AUC", ": ", auc / unmatched_points[0])
+    # auc = integrate.trapezoid(y_sorted, x_sorted)
+    # print("AUC", ": ", auc / unmatched_points[0])
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(unmatched_points, sensitivity, marker='o', label='Sensitivity', color='blue')
+    # plt.figure(figsize=(10, 5))
+    # plt.plot(unmatched_points, sensitivity, marker='o', label='Sensitivity', color='blue')
 
-    for x,y in zip(unmatched_points, sensitivity):
-        plt.annotate(f"{thresholds[unmatched_points.index(x)]}", (x, y), fontsize=8, ha='right', va='bottom')
+    # for x,y in zip(unmatched_points, sensitivity):
+    #     plt.annotate(f"{thresholds[unmatched_points.index(x)]}", (x, y), fontsize=8, ha='right', va='bottom')
 
-    plt.axhline(y=0.95, color='red', linestyle='--', label='Sensitivity = 0.95')
-    plt.axhline(y=0.92, color='green', linestyle='--', label='Sensitivity = 0.92')
-    plt.axhline(y=0.90, color='orange', linestyle='--', label='Sensitivity = 0.90')
-    plt.xlabel('Unmatched Points')
-    plt.ylabel('Sensitivity')
-    plt.title('Sensitivity vs Unmatched Points - AUC: {:.4f}'.format(auc / max(unmatched_points)))
-    plt.legend()
-    plt.savefig(args.val_out_dir + '/FROC.png')
+    # plt.axhline(y=0.95, color='red', linestyle='--', label='Sensitivity = 0.95')
+    # plt.axhline(y=0.92, color='green', linestyle='--', label='Sensitivity = 0.92')
+    # plt.axhline(y=0.90, color='orange', linestyle='--', label='Sensitivity = 0.90')
+    # plt.xlabel('Unmatched Points')
+    # plt.ylabel('Sensitivity')
+    # plt.title('Sensitivity vs Unmatched Points - AUC: {:.4f}'.format(auc / max(unmatched_points)))
+    # plt.legend()
+    # plt.savefig(args.val_out_dir + '/FROC.png')
 
     
 

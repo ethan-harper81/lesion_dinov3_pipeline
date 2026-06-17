@@ -25,9 +25,10 @@ def parse_points(points_json: str) -> List[Point]:
     if points_json is None or str(points_json).strip() == "" or str(points_json).lower() == "nan":
         return []
     pts = json.loads(points_json)
-
-    return [(float(x), float(y), float(d)) for x, y, d in pts]
-
+    try:
+        return [(float(x), float(y), float(d)) for x, y, d in pts]
+    except ValueError as e:
+        return [(float(x), float(y), 1) for x, y in pts]
 
 
 def read_rgb(path: str) -> np.ndarray:
@@ -58,7 +59,6 @@ def make_heatmap(h: int, w: int, points: Sequence[Point], sigma: float) -> np.nd
     hm = np.zeros((h, w), dtype=np.float32)
     for point in points:
         x, y = point[:2]
-        print(f"point ({x:.1f}, {y:.1f}), sigma={sigma:.2f}")
         if x < 0 or y < 0 or x >= w or y >= h:
             continue
         g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2)).astype(np.float32)
