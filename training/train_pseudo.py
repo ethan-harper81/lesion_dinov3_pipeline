@@ -1,5 +1,5 @@
 '''
-Training Loop Inlcuding Psuedo Positive Labels from Checkpoint
+Training Loop Inlcuding Pseudo Positive Labels from Checkpoint
 '''
 
 import argparse
@@ -15,6 +15,8 @@ from lesion_dinov3.model import DINOv3LesionDetector
 from lesion_dinov3.utils import seed_everything, format_duration
 from lesion_dinov3.losses import focal_bce_with_logits
 from inference.infer_full_image import load_model
+
+import matplotlib.pyplot as plt
 
 def load_cfg(path):
     with open(path, "r") as f:
@@ -33,7 +35,7 @@ def main():
     nw = cfg["data"].get("num_workers", 4)
 
     manual_ds = LesionTileDataset(cfg["data"]["manual_csv"], cfg, training=True)
-    pseudo_ds = LesionTileDataset(cfg["data"]["psuedo_csv"], cfg, training=True)
+    pseudo_ds = LesionTileDataset(cfg["data"]["pseudo_csv"], cfg, training=True)
 
     batch_size = cfg["train"]["batch_size"]
     assert batch_size % 2 == 0
@@ -71,7 +73,13 @@ def main():
 
         return loss
     
-    psuedo_iter = cycle(pseudo_loader)
+    total_loss_history = []
+    manual_loss_history = []
+    pseudo_loss_history = []
+    
+    fig, ax = plt.subplots(1,1, figsize=(10,5))
+
+    pseudo_iter = iter(pseudo_loader)
 
     params = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(params, lr=cfg["train"]["head_lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4))
@@ -90,7 +98,11 @@ def main():
         )
 
         for i , manual_batch in pbar:
-            pseudo_batch = next(psuedo_iter)
+            try:
+                pseudo_batch = next(pseudo_iter)
+            except StopIteration:
+                pseudo_iter = iter(pseudo_loader)
+                pseudo_batch = next(pseudo_iter)
 
             image = torch.cat([manual_batch["image"], pseudo_batch["image"]], dim = 0).to(device)
             prior = torch.cat([manual_batch["prior"], pseudo_batch["prior"]], dim = 0).to(device)
@@ -132,6 +144,19 @@ def main():
             f"manual={running_manual:.5f} "
             f"pseudo={running_pseudo:.5f}"
         )
+
+        ax[0].clear()
+        ax[0].plot(list(range(1, len(total_loss_history) + 1)), total_loss_history, label = "Total Loss")
+        ax[0].plot(list(range(1, len(manual_loss_history) + 1)), manual_loss_history, label = "Manual Loss")
+        ax[0].plot(list(range(1, len(pseudo_loss_history) + 1)), pseudo_loss_history, label = "Pseudo Loss")
+        ax[0].set_xlabel('Epoch')
+        ax[0].set_ylabel('Loss')
+        ax[0].set_title('Training Loss')
+
+        ax[0].legend()
+
+        fig.tight_layout()
+        plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
 
         ckpt = {"model": model.state_dict(), "cfg":cfg, "epoch": epoch}
 

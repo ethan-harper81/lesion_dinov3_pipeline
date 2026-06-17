@@ -3,7 +3,7 @@ seed: 1337
 
 data:
   manual_csv: data_singlescale/train.csv
-  psuedo_csv: data_singlescale/psuedo.csv
+  pseudo_csv: data_singlescale/pseudo.csv
   val_csv: data_multiscale/val.csv
   # CSV columns: image_path, points_json, prior_path(optional)
   # points_json example: [[1234,567],[2222,3333]] in full-image pixel coordinates
