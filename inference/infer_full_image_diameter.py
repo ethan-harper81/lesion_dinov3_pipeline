@@ -9,29 +9,14 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from lesion_dinov3.diameter_model import DINOv3LesionDiameterDetector
-from lesion_dinov3.utils import extract_peaks_torch, hann2d, iter_tile_origins, read_prior, read_rgb
-
-
-def load_model(ckpt_path, device):
-    with tqdm(total=3, desc="load model") as pbar:
-        ckpt = torch.load(ckpt_path, map_location=device)
-        cfg = ckpt["cfg"]
-        pbar.update(1)
-
-        model = DINOv3LesionDiameterDetector(
-            cfg["model"]["hf_model_name"],
-            freeze_backbone=True,
-            use_prior=cfg["model"].get("use_prior", True),
-            head_channels=cfg["model"].get("head_channels", 256),
-        ).to(device)
-        pbar.update(1)
-
-        model.load_state_dict(ckpt["model"], strict=True)
-        model.eval()
-        pbar.update(1)
-    return model, cfg
-
+from lesion_dinov3.utils import (
+    extract_peaks_torch, 
+    hann2d, 
+    iter_tile_origins, 
+    read_prior, 
+    read_rgb, 
+    load_model
+)
 
 def _device_name(device):
     if device.type == "cuda":
@@ -192,7 +177,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("using device:", device, _device_name(device))
-    model, cfg = load_model(args.checkpoint, device)
+    model, cfg = load_model(args.checkpoint, device, diameter=True)
     paths = run_inference(args.image, args.prior, model, cfg, args.out_dir)
     print("saved", *paths)
 

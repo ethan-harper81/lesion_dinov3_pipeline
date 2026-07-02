@@ -46,8 +46,11 @@ def create_eval(val_output_dir, val_csv):
 
         output_df.loc[len(output_df)] = [image_file, points_json, pred_csv]
         
+    eval_csv = f"{val_output_dir}/eval.csv"
 
-    output_df.to_csv(f"{val_output_dir}/eval.csv", index=False)
+    output_df.to_csv(eval_csv, index=False)
+
+    return eval_csv
 
 if __name__ == "__main__":
     #Name of training run to evaluate

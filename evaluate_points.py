@@ -64,7 +64,7 @@ def test(manifest, threshold=0.3):
         p = pd.read_csv(row["pred_csv"])
         p = p[p["score"] >= threshold]
         num_candidates += len(p)
-        pred = p[["x", "y", 'score']].to_numpy(dtype=np.float32)
+        pred = p[["x", "y"]].to_numpy(dtype=np.float32)
         out = match_points(pred, gt, tol=24)
         
         tp, fp, fn, fn_points, fn_indices, extra = out

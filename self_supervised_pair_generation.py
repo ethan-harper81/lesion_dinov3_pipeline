@@ -1,7 +1,7 @@
 import argparse
-from inference.infer_full_image import load_model, _infer_probability_map, extract_peaks_torch
+from inference.infer_full_image import _infer_probability_map, extract_peaks_torch
 import torch
-from lesion_dinov3.utils import read_rgb
+from lesion_dinov3.utils import read_rgb, load_model
 import os
 import json
 import pandas as pd
@@ -16,7 +16,7 @@ def main():
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, cfg = load_model(args.checkpoint, device)
+    model, cfg = load_model(args.checkpoint, device, diameter=False)
     device = next(model.parameters()).device
 
     imgs = []

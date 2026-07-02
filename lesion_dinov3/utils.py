@@ -4,12 +4,15 @@ import os
 import random
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
-import tqdm as tqdm
+from tqdm import tqdm
 
 import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+from lesion_dinov3.model import DINOv3LesionDetector
+from lesion_dinov3.diameter_model import DINOv3LesionDiameterDetector
 
 Point = Tuple[float, float] | Tuple[float, float, float]
 
@@ -20,6 +23,32 @@ def seed_everything(seed: int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+def load_model(ckpt_path, device, diameter = False):
+    with tqdm(total=3, desc="load model") as pbar:
+        ckpt = torch.load(ckpt_path, map_location=device)
+        cfg = ckpt["cfg"]
+        pbar.update(1)
+
+        if diameter:
+            model = DINOv3LesionDiameterDetector(
+                cfg["model"]["hf_model_name"],
+                freeze_backbone=True,
+                use_prior=cfg["model"].get("use_prior", True),
+                head_channels=cfg["model"].get("head_channels", 256),
+            ).to(device)
+        else:
+            model = DINOv3LesionDetector(
+            cfg["model"]["hf_model_name"],
+            freeze_backbone=True,
+            use_prior=cfg["model"].get("use_prior", True),
+            head_channels=cfg["model"].get("head_channels", 256),
+        ).to(device)
+        pbar.update(1)
+
+        model.load_state_dict(ckpt["model"], strict=True)
+        model.eval()
+        pbar.update(1)
+    return model, cfg
 
 def parse_points(points_json: str) -> List[Point]:
     if points_json is None or str(points_json).strip() == "" or str(points_json).lower() == "nan":

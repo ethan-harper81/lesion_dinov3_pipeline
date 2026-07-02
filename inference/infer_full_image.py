@@ -8,9 +8,14 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from lesion_dinov3.model import DINOv3LesionDetector
-from lesion_dinov3.utils import extract_peaks, extract_peaks_torch, hann2d, iter_tile_origins, read_prior, read_rgb
-
+from lesion_dinov3.utils import (
+    load_model, 
+    extract_peaks_torch, 
+    hann2d, 
+    iter_tile_origins, 
+    read_prior, 
+    read_rgb
+)
 import timeit
 
 MULTISCALE_TILE_SIZES = {
@@ -19,27 +24,6 @@ MULTISCALE_TILE_SIZES = {
     4: 432,
     8: 224,
 }
-
-
-def load_model(ckpt_path, device):
-    with tqdm(total=3, desc="load model") as pbar:
-        ckpt = torch.load(ckpt_path, map_location=device)
-        cfg = ckpt["cfg"]
-        pbar.update(1)
-
-        model = DINOv3LesionDetector(
-            cfg["model"]["hf_model_name"],
-            freeze_backbone=True,
-            use_prior=cfg["model"].get("use_prior", True),
-            head_channels=cfg["model"].get("head_channels", 256),
-        ).to(device)
-        pbar.update(1)
-
-        model.load_state_dict(ckpt["model"], strict=True)
-        model.eval()
-        pbar.update(1)
-    return model, cfg
-
 
 def _device_name(device):
     if device.type == "cuda":
@@ -92,8 +76,8 @@ def _infer_probability_map(image_path, prior, model, cfg, tile, stride, desc_pre
 
     origins = list(iter_tile_origins(w, h, tile, stride))
     batch_imgs, batch_priors, batch_origins = [], [], []
-    tile_pbar = tqdm(total=len(origins), desc=f"{desc_prefix}tiles", unit="tile")
-    batch_pbar = tqdm(total=(len(origins) + bs - 1) // bs, desc=f"{desc_prefix}forward batches", unit="batch")
+    # tile_pbar = tqdm(total=len(origins), desc=f"{desc_prefix}tiles", unit="tile")
+    # batch_pbar = tqdm(total=(len(origins) + bs - 1) // bs, desc=f"{desc_prefix}forward batches", unit="batch")
 
     def flush():
         nonlocal batch_imgs, batch_priors, batch_origins, score, weight
@@ -113,7 +97,7 @@ def _infer_probability_map(image_path, prior, model, cfg, tile, stride, desc_pre
                 pr = (1 - alpha) * pr + alpha * prior_tile
             score[y0:y0+h_part, x0:x0+w_part] += pr * win[:h_part, :w_part]
             weight[y0:y0+h_part, x0:x0+w_part] += win[:h_part, :w_part]
-        batch_pbar.update(1)
+        # batch_pbar.update(1)
         batch_imgs, batch_priors, batch_origins = [], [], []
 
     for x0, y0 in origins:
@@ -122,21 +106,19 @@ def _infer_probability_map(image_path, prior, model, cfg, tile, stride, desc_pre
         batch_imgs.append(_pad_tile(tile_img, tile))
         batch_priors.append(_pad_tile(tile_prior, tile))
         batch_origins.append((x0, y0))
-        tile_pbar.update(1)
+        # tile_pbar.update(1)
         if len(batch_imgs) >= bs:
             flush()
     flush()
-    tile_pbar.close()
-    batch_pbar.close()
+    # tile_pbar.close()
+    # batch_pbar.close()
 
-    tqdm.write("stitching tiles")
     full_prob_gpu = score / torch.clamp(weight, min=1e-6)
     return full_prob_gpu
 
 
 def _save_inference_outputs(image_path, out_dir, full_prob_gpu, cfg):
     full_prob = full_prob_gpu.cpu().numpy()
-    tqdm.write("extracting peaks")
     pts, scores = extract_peaks_torch(
         full_prob_gpu,
         threshold=float(cfg["infer"]["threshold"]),
@@ -145,26 +127,24 @@ def _save_inference_outputs(image_path, out_dir, full_prob_gpu, cfg):
     )
 
     heat_path, png_path, csv_path = _output_paths(image_path, out_dir)
-    with tqdm(total=3, desc="save outputs") as pbar:
-        np.save(heat_path, full_prob)
-        pbar.update(1)
-        cv2.imwrite(png_path, (np.clip(full_prob, 0, 1) * 255).astype(np.uint8))
-        pbar.update(1)
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["x", "y", "score"])
-            for (x, y), s in zip(pts, scores):
-                writer.writerow([float(x), float(y), float(s)])
-        pbar.update(1)
+    np.save(heat_path, full_prob)
+
+    cv2.imwrite(png_path, (np.clip(full_prob, 0, 1) * 255).astype(np.uint8))
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["x", "y", "score"])
+        for (x, y), s in zip(pts, scores):
+            writer.writerow([float(x), float(y), float(s)])
+
     return heat_path, png_path, csv_path, len(pts)
 
 
-def run_inference(image_path, prior_path, model, cfg, out_dir):
+def run_inference(image_path, prior_path, model, cfg, out_dir, verbose = True):
     t0 = timeit.default_timer()
     os.makedirs(out_dir, exist_ok=True)
     device = next(model.parameters()).device
-    print("inference on:", _device_name(device))
-    tqdm.write("reading image/prior")
+    # print("inference on:", _device_name(device))
     img = read_rgb(image_path)
     h, w = img.shape[:2]
     prior = read_prior(prior_path, (h, w))
@@ -176,10 +156,10 @@ def run_inference(image_path, prior_path, model, cfg, out_dir):
     t1 = timeit.default_timer()
     heat_path, png_path, csv_path, num_candidates = _save_inference_outputs(image_path, out_dir, full_prob_gpu, cfg)
 
-    
-    print(f"Inference complete in {t1-t0:.2f} seconds. Found {num_candidates} candidates.")
+    if verbose:
+        print(f"Inference complete in {t1-t0:.2f} seconds. Found {num_candidates} candidates.")
 
-    return heat_path, png_path, csv_path
+    return heat_path, png_path, csv_path, (t1-t0)
 
 
 def _multiscale_image_paths(image_path_1x):
@@ -200,11 +180,10 @@ def _multiscale_image_paths(image_path_1x):
     }
 
 
-def run_multiscale_inference(image_path_1x, model, cfg, out_dir):
+def run_multiscale_inference(image_path_1x, model, cfg, out_dir, verbose = True):
     t0 = timeit.default_timer()
     os.makedirs(out_dir, exist_ok=True)
     device = next(model.parameters()).device
-    print("multiscale inference on:", _device_name(device))
 
     image_paths = _multiscale_image_paths(image_path_1x)
     missing = [path for path in image_paths.values() if not os.path.exists(path)]
@@ -240,9 +219,10 @@ def run_multiscale_inference(image_path_1x, model, cfg, out_dir):
         cfg,
     )
 
+    if verbose:
+        print(f"Multiscale inference complete in {t1-t0:.2f} seconds. Found {num_candidates} candidates.")
     
-    print(f"Multiscale inference complete in {t1-t0:.2f} seconds. Found {num_candidates} candidates.")
-    return heat_path, png_path, csv_path
+    return heat_path, png_path, csv_path, (t1-t0)
 
 
 
@@ -265,7 +245,7 @@ def main(chk = None, img = None, fac = None):
     if args.multiscale:
         heat_path, png_path, csv_path = run_multiscale_inference(image, model, cfg, out)
     else:
-        heat_path, png_path, csv_path = run_inference(image, args.prior, model, cfg, out)
+        heat_path, png_path, csv_path, _ = run_inference(image, args.prior, model, cfg, out)
 
     print("saved", heat_path, png_path, csv_path)
     if chk or img:

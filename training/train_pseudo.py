@@ -12,9 +12,9 @@ import os
 from torch.utils.data import DataLoader
 from lesion_dinov3.dataset import LesionTileDataset
 from lesion_dinov3.model import DINOv3LesionDetector
-from lesion_dinov3.utils import seed_everything, format_duration
+from lesion_dinov3.utils import seed_everything, format_duration, load_model
 from lesion_dinov3.losses import focal_bce_with_logits
-from inference.infer_full_image import load_model
+
 
 import matplotlib.pyplot as plt
 
@@ -66,8 +66,10 @@ def main():
         drop_last=True,
     )
 
+    print("Loading Model")
     model, _ = load_model(args.checkpoint, device)
-    
+    print("Done Loading Model")
+
     def compute_loss(logits, target, mode = "train"):
         loss = focal_bce_with_logits(logits, target, cfg["train"].get("focal_gamma", 2.0), cfg["train"].get("pos_weight", 20.0))
 
@@ -76,8 +78,6 @@ def main():
     total_loss_history = []
     manual_loss_history = []
     pseudo_loss_history = []
-    
-    fig, ax = plt.subplots(1,1, figsize=(10,5))
 
     pseudo_iter = iter(pseudo_loader)
 
@@ -85,6 +85,7 @@ def main():
     opt = torch.optim.AdamW(params, lr=cfg["train"]["head_lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4))
     scaler = torch.amp.GradScaler("cuda", enabled=bool(cfg["train"].get("amp", True)) and device == "cuda")
 
+    fig, ax = plt.subplots()
 
     for epoch in range(1, int(cfg["train"]["epochs"] + 1)):
         model.train()
@@ -135,8 +136,11 @@ def main():
             )
 
         running_total /= max(1, len(manual_loader))
+        total_loss_history.append(running_total)
         running_manual /= max(1, len(manual_loader))
+        manual_loss_history.append(running_manual)
         running_pseudo /= max(1, len(manual_loader))
+        pseudo_loss_history.append(running_pseudo)
 
         print(
             f"epoch={epoch} "
@@ -145,22 +149,25 @@ def main():
             f"pseudo={running_pseudo:.5f}"
         )
 
-        ax[0].clear()
-        ax[0].plot(list(range(1, len(total_loss_history) + 1)), total_loss_history, label = "Total Loss")
-        ax[0].plot(list(range(1, len(manual_loss_history) + 1)), manual_loss_history, label = "Manual Loss")
-        ax[0].plot(list(range(1, len(pseudo_loss_history) + 1)), pseudo_loss_history, label = "Pseudo Loss")
-        ax[0].set_xlabel('Epoch')
-        ax[0].set_ylabel('Loss')
-        ax[0].set_title('Training Loss')
+        ax.clear()
+        ax.plot(total_loss_history, label = "Total Loss")
+        ax.plot(manual_loss_history, label = "Manual Loss")
+        ax.plot(pseudo_loss_history, label = "Pseudo Loss")
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        ax.set_title('Training Loss')
 
-        ax[0].legend()
+        ax.legend()
 
-        fig.tight_layout()
-        plt.savefig(os.path.join(cfg["train"]["output_dir"], "loss.png"))
+        fig.savefig(
+            os.path.join(cfg["train"]["output_dir"], "loss.png"),
+            dpi=150,
+            bbox_inches = 'tight'
+        )
 
         ckpt = {"model": model.state_dict(), "cfg":cfg, "epoch": epoch}
 
-        torch.save(ckpt, os.path.join(cfg["train"]["out_dir"], f"epoch_{epoch}.pt"))
+        torch.save(ckpt, os.path.join(cfg["train"]["output_dir"], f"epoch_{epoch}.pt"))
 
 if __name__ == "__main__":
     main()
